@@ -63,6 +63,10 @@ else
                         <span class="pastille pastille-alerte">Désactivé</span>
                     }
                     <span class="details-ligne">@ingredient.Categorie · en @ingredient.UniteReference</span>
+                    @if (ingredient.FusionneDans is not null)
+                    {
+                        <span class="details-ligne">Fusionné dans @ingredient.FusionneDans</span>
+                    }
                     @if (ingredient.Synonymes.Length > 0)
                     {
                         <span class="details-ligne">Aussi : @ingredient.Synonymes</span>

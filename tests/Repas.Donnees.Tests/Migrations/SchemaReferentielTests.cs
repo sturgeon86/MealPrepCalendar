@@ -153,6 +153,14 @@ public sealed class SchemaReferentielTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task LeSchemaNUtiliseAucunIndexFiltre()
+    {
+        // Un index filtré oblige toute modification de sa table à se faire avec QUOTED_IDENTIFIER ON,
+        // ce que sqlcmd ne fait pas par défaut : un script de maintenance échouerait.
+        Assert.Equal(0, await _base.ScalaireAsync<int>("SELECT COUNT(*) FROM sys.indexes WHERE has_filter = 1;"));
+    }
+
+    [Fact]
     public async Task UneCategorieUtiliseeNePeutPasEtreSupprimee()
     {
         await AjouterIngredientAsync("Poitrine de poulet");

@@ -25,6 +25,15 @@ else
 {
     <h1>@(EstNouveau ? "Nouvel ingrédient" : "Modifier l'ingrédient")</h1>
 
+    @if (_fusionneDans is not null)
+    {
+        <p class="message-info" role="status">
+            Cet ingrédient est un doublon fusionné dans
+            <a href="ingredients/@_fusionneDans.Id">@_fusionneDans.Nom</a>.
+            Le réactiver annule ce lien.
+        </p>
+    }
+
     <section class="carte-formulaire carte-large">
         <EditForm Model="_modele" OnSubmit="EnregistrerAsync">
             @if (_erreurs.Count > 0)
@@ -124,6 +133,68 @@ else
             <button type="submit" class="bouton-principal" disabled="@_enCours">Enregistrer</button>
         </EditForm>
     </section>
+
+    @if (!EstNouveau && _fusionneDans is null)
+    {
+        <section class="carte-formulaire carte-large">
+            <h2>Fusionner ce doublon</h2>
+            <p class="aide">
+                Si « @_nomEnregistre » est un doublon d'un autre ingrédient, fusionnez-le dans celui à garder :
+                ses synonymes y seront ajoutés, ce qui pointait vers lui pointera vers l'autre, et il sera désactivé.
+            </p>
+
+            @if (_erreurFusion is not null)
+            {
+                <p class="message-erreur" role="alert">@_erreurFusion</p>
+            }
+
+            @if (_cibleChoisie is null)
+            {
+                <div class="champ">
+                    <label for="recherche-fusion">Ingrédient à garder</label>
+                    <input id="recherche-fusion" type="search" placeholder="Nom ou synonyme" autocomplete="off"
+                           @bind="_rechercheFusion" @bind:event="oninput" @bind:after="ChercherCandidatsAsync" />
+                </div>
+
+                @if (_candidats.Count > 0)
+                {
+                    <ul class="liste-cartes">
+                        @foreach (var candidat in _candidats)
+                        {
+                            <li @key="candidat.Id">
+                                <div class="infos-ligne">
+                                    <span class="nom-ligne">@candidat.Nom</span>
+                                    <span class="details-ligne">@candidat.Categorie · en @candidat.UniteReference</span>
+                                </div>
+                                <button type="button" class="bouton-secondaire" @onclick="() => ChoisirCible(candidat)">Choisir</button>
+                            </li>
+                        }
+                    </ul>
+                }
+                else if (!string.IsNullOrWhiteSpace(_rechercheFusion))
+                {
+                    <p class="aide">Aucun autre ingrédient actif ne correspond.</p>
+                }
+            }
+            else
+            {
+                <div class="confirmation" role="group" aria-labelledby="titre-confirmation">
+                    <p id="titre-confirmation">
+                        Fusionner <strong>« @_nomEnregistre »</strong> dans <strong>« @_cibleChoisie.Nom »</strong> ?
+                    </p>
+                    <ul>
+                        <li>Les synonymes de « @_nomEnregistre » passeront à « @_cibleChoisie.Nom ».</li>
+                        <li>« @_nomEnregistre » sera désactivé, avec un lien vers « @_cibleChoisie.Nom ».</li>
+                        <li>Pour annuler plus tard, il suffira de le réactiver (ses synonymes resteront à « @_cibleChoisie.Nom »).</li>
+                    </ul>
+                    <div class="actions-page">
+                        <button type="button" class="bouton-principal bouton-compact" disabled="@_enCours" @onclick="FusionnerAsync">Fusionner</button>
+                        <button type="button" class="bouton-secondaire" @onclick="AnnulerFusion">Annuler</button>
+                    </div>
+                </div>
+            }
+        </section>
+    }
 }
 
 @code {
@@ -133,6 +204,12 @@ else
     private List<string> _erreurs = [];
     private bool _introuvable;
     private bool _enCours;
+    private string _nomEnregistre = string.Empty;
+    private CibleFusion? _fusionneDans;
+    private string _rechercheFusion = string.Empty;
+    private List<ResumeIngredient> _candidats = [];
+    private ResumeIngredient? _cibleChoisie;
+    private string? _erreurFusion;
 
     [Parameter]
     public int? Id { get; set; }
@@ -143,6 +220,20 @@ else
     {
         _categories = await DepotCategories.ListerAsync();
         _unites = await DepotUnites.ListerAsync();
+    }
+
+    // La même page sert à toutes les fiches : passer de l'une à l'autre (ex. : après une fusion)
+    // change seulement l'Id, donc la fiche est rechargée à chaque changement de paramètre.
+    protected override async Task OnParametersSetAsync()
+    {
+        _modele = null;
+        _introuvable = false;
+        _erreurs = [];
+        _fusionneDans = null;
+        _rechercheFusion = string.Empty;
+        _candidats = [];
+        _cibleChoisie = null;
+        _erreurFusion = null;
 
         if (EstNouveau)
         {
@@ -159,6 +250,49 @@ else
         }
 
         _modele = ModeleFiche.Depuis(fiche);
+        _nomEnregistre = fiche.Nom;
+        _fusionneDans = await DepotIngredients.TrouverCibleFusionAsync(fiche.Id);
+    }
+
+    private async Task ChercherCandidatsAsync()
+    {
+        _erreurFusion = null;
+        if (string.IsNullOrWhiteSpace(_rechercheFusion))
+        {
+            _candidats = [];
+            return;
+        }
+
+        // Seuls les ingrédients actifs peuvent être gardés ; on n'offre pas l'ingrédient lui-même.
+        var resultats = await DepotIngredients.RechercherAsync(_rechercheFusion);
+        _candidats = resultats.Where(r => r.Id != Id).Take(8).ToList();
+    }
+
+    private void ChoisirCible(ResumeIngredient cible)
+    {
+        _erreurFusion = null;
+        _cibleChoisie = cible;
+    }
+
+    private void AnnulerFusion() => _cibleChoisie = null;
+
+    private async Task FusionnerAsync()
+    {
+        _enCours = true;
+        try
+        {
+            await DepotIngredients.FusionnerAsync(Id!.Value, _cibleChoisie!.Id);
+            Navigation.NavigateTo($"ingredients/{_cibleChoisie.Id}");
+        }
+        catch (FusionImpossibleException ex)
+        {
+            _erreurFusion = ex.Message;
+            _cibleChoisie = null;
+        }
+        finally
+        {
+            _enCours = false;
+        }
     }
 
     // Au changement de type de mesure, l'unité des totaux devient l'unité de base de ce type (g, ml ou unité).

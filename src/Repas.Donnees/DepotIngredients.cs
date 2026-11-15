@@ -33,10 +33,12 @@ public sealed class DepotIngredients : DepotBase
             SELECT i.Id, i.Nom, i.CategorieId, c.Nom, i.TypeMesure, u.Code, i.EstAlimentaire, i.Actif,
                    ISNULL((SELECT STRING_AGG(s.Synonyme, N', ') WITHIN GROUP (ORDER BY s.Synonyme)
                            FROM dbo.IngredientSynonyme s
-                           WHERE s.IngredientId = i.Id), N'')
+                           WHERE s.IngredientId = i.Id), N''),
+                   f.Nom
             FROM dbo.Ingredient i
             JOIN dbo.Categorie c ON c.Id = i.CategorieId
             JOIN dbo.Unite u ON u.Id = i.UniteReferenceId
+            LEFT JOIN dbo.Ingredient f ON f.Id = i.FusionneDansId
             WHERE (@categorieId IS NULL OR i.CategorieId = @categorieId)
               AND (@inclureInactifs = 1 OR i.Actif = 1)
               AND (@motif IS NULL
@@ -62,7 +64,8 @@ public sealed class DepotIngredients : DepotBase
                 UniteReference: l.GetString(5),
                 EstAlimentaire: l.GetBoolean(6),
                 Actif: l.GetBoolean(7),
-                Synonymes: l.GetString(8)),
+                Synonymes: l.GetString(8),
+                FusionneDans: l.IsDBNull(9) ? null : l.GetString(9)),
             p => p
                 .Ajouter("@categorieId", SqlDbType.Int, categorieId)
                 .Ajouter("@inclureInactifs", SqlDbType.Bit, inclureInactifs)
@@ -143,7 +146,9 @@ public sealed class DepotIngredients : DepotBase
         const string sql = """
             UPDATE dbo.Ingredient
             SET Nom = @nom, CategorieId = @categorieId, TypeMesure = @typeMesure, UniteReferenceId = @uniteReferenceId,
-                DensiteGParMl = @densite, PoidsMoyenUniteG = @poidsMoyen, EstAlimentaire = @estAlimentaire, Actif = @actif
+                DensiteGParMl = @densite, PoidsMoyenUniteG = @poidsMoyen, EstAlimentaire = @estAlimentaire, Actif = @actif,
+                -- Réactiver un ingrédient fusionné annule le lien de fusion.
+                FusionneDansId = CASE WHEN @actif = 1 THEN NULL ELSE FusionneDansId END
             WHERE Id = @id;
             """;
         const string sqlRetirerSynonymes = "DELETE FROM dbo.IngredientSynonyme WHERE IngredientId = @id;";
@@ -163,6 +168,81 @@ public sealed class DepotIngredients : DepotBase
                 await s.ExecuterAsync(sqlRetirerSynonymes, p => p.Ajouter("@id", SqlDbType.Int, fiche.Id), annulation);
                 await AjouterSynonymesAsync(s, fiche.Id, fiche.Synonymes, annulation);
                 return true;
+            },
+            annulation);
+    }
+
+    /// <summary>
+    /// Colonnes qui font référence à un ingrédient et que <see cref="FusionnerAsync"/> reporte sur
+    /// l'ingrédient conservé. Toute nouvelle table qui référence <c>Ingredient</c> (recettes, listes…)
+    /// doit être traitée par la fusion et ajoutée ici ; un test d'intégration le vérifie.
+    /// </summary>
+    public static readonly IReadOnlyList<string> ReferencesTraiteesParFusion =
+    [
+        "Ingredient.FusionneDansId",
+        "IngredientSynonyme.IngredientId",
+    ];
+
+    /// <summary>L'ingrédient qui remplace celui-ci, s'il a été fusionné ; sinon <c>null</c>.</summary>
+    public Task<CibleFusion?> TrouverCibleFusionAsync(int id, SessionSql? session = null, CancellationToken annulation = default)
+    {
+        const string sql = """
+            SELECT f.Id, f.Nom
+            FROM dbo.Ingredient i
+            JOIN dbo.Ingredient f ON f.Id = i.FusionneDansId
+            WHERE i.Id = @id;
+            """;
+        return PremierOuDefautAsync(
+            session, sql, l => new CibleFusion(l.GetInt32(0), l.GetString(1)), p => p.Ajouter("@id", SqlDbType.Int, id), annulation);
+    }
+
+    /// <summary>
+    /// Fusionne un doublon dans l'ingrédient conservé, dans une transaction : tout ce qui pointait vers
+    /// le doublon pointe ensuite vers l'ingrédient conservé (synonymes, anciens doublons déjà fusionnés
+    /// dans celui-ci), puis le doublon est désactivé et garde le lien vers l'ingrédient conservé.
+    /// </summary>
+    /// <returns>Le nombre de synonymes passés à l'ingrédient conservé.</returns>
+    /// <exception cref="FusionImpossibleException">La fusion ne respecte pas <see cref="RegleFusion"/> ; rien n'est modifié.</exception>
+    public Task<int> FusionnerAsync(
+        int doublonId, int conserveId, SessionSql? session = null, CancellationToken annulation = default)
+    {
+        // Verrouille les deux lignes jusqu'à la fin de la transaction.
+        const string sqlEtat = "SELECT Id, Nom, Actif, FusionneDansId FROM dbo.Ingredient WITH (UPDLOCK, HOLDLOCK) WHERE Id = @id;";
+        const string sqlSynonymes = "UPDATE dbo.IngredientSynonyme SET IngredientId = @conserveId WHERE IngredientId = @doublonId;";
+        const string sqlAnciensDoublons = "UPDATE dbo.Ingredient SET FusionneDansId = @conserveId WHERE FusionneDansId = @doublonId;";
+        const string sqlDesactiver = "UPDATE dbo.Ingredient SET Actif = 0, FusionneDansId = @conserveId WHERE Id = @doublonId;";
+
+        return DansTransactionAsync(
+            session,
+            async s =>
+            {
+                async Task<EtatFusion?> LireEtatAsync(int id) => await s.PremierOuDefautAsync(
+                    sqlEtat,
+                    l => new EtatFusion(l.GetInt32(0), l.GetString(1), l.GetBoolean(2), l.IsDBNull(3) ? null : l.GetInt32(3)),
+                    p => p.Ajouter("@id", SqlDbType.Int, id),
+                    annulation);
+
+                // Toujours dans le même ordre d'Id, pour éviter un interblocage entre deux fusions croisées.
+                var (premier, second) = doublonId < conserveId ? (doublonId, conserveId) : (conserveId, doublonId);
+                var etatPremier = await LireEtatAsync(premier);
+                var etatSecond = premier == second ? etatPremier : await LireEtatAsync(second);
+                var doublon = doublonId == premier ? etatPremier : etatSecond;
+                var conserve = conserveId == premier ? etatPremier : etatSecond;
+
+                var probleme = RegleFusion.Verifier(doublon, conserve);
+                if (probleme is not null)
+                {
+                    throw new FusionImpossibleException(probleme);
+                }
+
+                void Ids(SqlParameterCollection p) => p
+                    .Ajouter("@doublonId", SqlDbType.Int, doublonId)
+                    .Ajouter("@conserveId", SqlDbType.Int, conserveId);
+
+                var synonymes = await s.ExecuterAsync(sqlSynonymes, Ids, annulation);
+                await s.ExecuterAsync(sqlAnciensDoublons, Ids, annulation);
+                await s.ExecuterAsync(sqlDesactiver, Ids, annulation);
+                return synonymes;
             },
             annulation);
     }

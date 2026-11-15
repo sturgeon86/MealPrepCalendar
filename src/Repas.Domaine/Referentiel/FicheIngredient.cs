@@ -21,6 +21,7 @@ public sealed record FicheIngredient(
 
 /// <summary>Ligne de la liste des ingrédients.</summary>
 /// <param name="Synonymes">Synonymes séparés par des virgules, pour l'affichage ; vide s'il n'y en a pas.</param>
+/// <param name="FusionneDans">Nom de l'ingrédient qui le remplace, s'il a été fusionné.</param>
 public sealed record ResumeIngredient(
     int Id,
     string Nom,
@@ -30,4 +31,5 @@ public sealed record ResumeIngredient(
     string UniteReference,
     bool EstAlimentaire,
     bool Actif,
-    string Synonymes);
+    string Synonymes,
+    string? FusionneDans = null);
