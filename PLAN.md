@@ -52,7 +52,7 @@ L'app tourne sur Unraid en réseau local seulement (`http://192.168.1.10:8096`, 
   - *Critères :* fait dans une transaction ; aucune donnée perdue.
 
 ## Itération 3 — Livre de recettes
-- [ ] **3.1 Tables** `Recette`, `RecetteIngredient`, `RecetteEtape`, `Etiquette`, `RecetteEtiquette`.
+- [x] **3.1 Tables** `Recette`, `RecetteIngredient`, `RecetteEtape`, `Etiquette`, `RecetteEtiquette`.
 - [ ] **3.2 Saisie d'une recette** : nom, portions, temps, notes, ingrédients (recherche dans le référentiel avec synonymes, quantité, unité, précision, optionnel), étapes ordonnées, étiquettes.
   - *Critères :* un ingrédient absent peut être créé sans quitter la recette ; ordre des ingrédients et des étapes modifiable.
 - [ ] **3.3 Photo de la recette** : téléversement et affichage (stockage sur un volume Docker).

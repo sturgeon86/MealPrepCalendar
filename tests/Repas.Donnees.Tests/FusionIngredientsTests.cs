@@ -50,6 +50,31 @@ public sealed class FusionIngredientsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Fusionner_LesRecettesUtilisentLIngredientConserve()
+    {
+        var conserve = await IdAsync("Lait 2 %");
+        var doublon = await AjouterAsync("lait 2%");
+        await _baseDeTest.ExecuterAsync(
+            $"""
+            INSERT INTO dbo.Utilisateur (Courriel, NomAffiche, MotDePasseHash) VALUES (N'marie@exemple.com', N'Marie', N'hash');
+            INSERT INTO dbo.Recette (Nom, Portions, CreePar) VALUES (N'Crêpes', 4, SCOPE_IDENTITY());
+            DECLARE @recette INT = SCOPE_IDENTITY();
+            DECLARE @tasse INT = (SELECT Id FROM dbo.Unite WHERE Code = N'tasse');
+            INSERT INTO dbo.RecetteIngredient (RecetteId, IngredientId, Quantite, UniteId, Precision, Ordre) VALUES
+                (@recette, {doublon}, 1, @tasse, N'tiède', 1),
+                (@recette, {conserve}, 0.5, @tasse, NULL, 2);
+            """);
+
+        await _depot.FusionnerAsync(doublon, conserve);
+
+        // Les deux lignes restent, avec leurs quantités et précisions, et désignent l'ingrédient conservé.
+        Assert.Equal(0, await _baseDeTest.ScalaireAsync<int>($"SELECT COUNT(*) FROM dbo.RecetteIngredient WHERE IngredientId = {doublon};"));
+        Assert.Equal(2, await _baseDeTest.ScalaireAsync<int>($"SELECT COUNT(*) FROM dbo.RecetteIngredient WHERE IngredientId = {conserve};"));
+        Assert.Equal(1, await _baseDeTest.ScalaireAsync<int>(
+            $"SELECT COUNT(*) FROM dbo.RecetteIngredient WHERE IngredientId = {conserve} AND Quantite = 1 AND Precision = N'tiède' AND Ordre = 1;"));
+    }
+
+    [Fact]
     public async Task Fusionner_AucuneDonneeNEstPerdue()
     {
         var conserve = await IdAsync("Lait 2 %");
