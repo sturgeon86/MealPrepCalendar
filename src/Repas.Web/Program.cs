@@ -24,6 +24,7 @@ builder.Services.AddSingleton(baseDeDonnees);
 builder.Services.AddSingleton<DepotUtilisateurs>();
 builder.Services.AddSingleton<IHacheurMotDePasse, HacheurMotDePasse>();
 builder.Services.AddSingleton<ServiceConnexion>();
+builder.Services.AddSingleton<ServicePremierCompte>();
 
 builder.Services
     .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)

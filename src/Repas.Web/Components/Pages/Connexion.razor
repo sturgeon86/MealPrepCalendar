@@ -9,11 +9,12 @@
 @using Microsoft.AspNetCore.Http.HttpResults
 @using Repas.Web.Authentification
 @inject ServiceConnexion ServiceConnexion
+@inject ServicePremierCompte ServicePremierCompte
 @inject NavigationManager Navigation
 
 <PageTitle>Connexion</PageTitle>
 
-<section class="connexion">
+<section class="carte-formulaire">
     <h1>Connexion</h1>
 
     <EditForm Model="Saisie" method="post" OnValidSubmit="SeConnecterAsync" FormName="connexion">
@@ -61,9 +62,16 @@
 
     private string AdresseApresConnexion => RedirectHttpResult.IsLocalUrl(Retour) ? Retour! : "/";
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         Saisie ??= new SaisieConnexion();
+
+        // Aucun compte encore : on commence par créer le premier.
+        if (await ServicePremierCompte.EstRequisAsync())
+        {
+            Navigation.NavigateTo("/premier-compte");
+            return;
+        }
 
         // Déjà connecté : inutile de montrer le formulaire.
         if (HttpMethods.IsGet(HttpContext.Request.Method) && HttpContext.User.Identity?.IsAuthenticated == true)

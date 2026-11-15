@@ -11,4 +11,8 @@ public sealed record Utilisateur(
     string NomAffiche,
     string MotDePasseHash,
     bool Actif,
-    DateTime DateCreation);
+    DateTime DateCreation)
+{
+    /// <summary>Longueur maximale du nom affiché (colonne <c>Utilisateur.NomAffiche</c>).</summary>
+    public const int LongueurMaxNomAffiche = 100;
+}

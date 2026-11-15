@@ -118,6 +118,50 @@ public sealed class DepotUtilisateursTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AjouterPremier_SurUneBaseVide_CreeLeCompte()
+    {
+        var cree = await _depot.AjouterPremierAsync(" Marie@Exemple.com ", "Marie", "hash-1");
+
+        Assert.NotNull(cree);
+        Assert.Equal("marie@exemple.com", cree.Courriel);
+        Assert.True(cree.Actif);
+        Assert.Equal(cree, await _depot.TrouverParIdAsync(cree.Id));
+    }
+
+    [Fact]
+    public async Task AjouterPremier_QuandUnCompteExiste_NeCreeRien()
+    {
+        await _depot.AjouterAsync("marie@exemple.com", "Marie", "hash-1");
+
+        var cree = await _depot.AjouterPremierAsync("intrus@exemple.com", "Intrus", "hash-2");
+
+        Assert.Null(cree);
+        Assert.Equal(1, await _depot.CompterAsync());
+    }
+
+    [Fact]
+    public async Task AjouterPremier_UnCompteDesactiveCompteAussi()
+    {
+        var marie = await _depot.AjouterAsync("marie@exemple.com", "Marie", "hash-1");
+        await _depot.ModifierActifAsync(marie.Id, false);
+
+        Assert.Null(await _depot.AjouterPremierAsync("intrus@exemple.com", "Intrus", "hash-2"));
+    }
+
+    [Fact]
+    public async Task AjouterPremier_DemandesSimultanees_UnSeulCompteEstCree()
+    {
+        var demandes = Enumerable.Range(1, 12)
+            .Select(i => Task.Run(() => _depot.AjouterPremierAsync($"personne{i}@exemple.com", $"Personne {i}", "hash")))
+            .ToArray();
+
+        var resultats = await Task.WhenAll(demandes);
+
+        Assert.Single(resultats, r => r is not null);
+        Assert.Equal(1, await _depot.CompterAsync());
+    }
+
+    [Fact]
     public async Task Ajouter_DansUneTransactionAnnulee_NeLaisseRien()
     {
         await Assert.ThrowsAsync<InvalidOperationException>(() => _base.DansTransactionAsync(async session =>

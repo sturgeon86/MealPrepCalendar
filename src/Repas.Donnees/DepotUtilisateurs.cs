@@ -42,7 +42,7 @@ public sealed class DepotUtilisateurs : DepotBase
                 Lire,
                 p => p
                     .Ajouter("@courriel", SqlDbType.NVarChar, Courriel.LongueurMax, courrielNormalise)
-                    .Ajouter("@nomAffiche", SqlDbType.NVarChar, 100, nomAffiche)
+                    .Ajouter("@nomAffiche", SqlDbType.NVarChar, Utilisateur.LongueurMaxNomAffiche, nomAffiche)
                     .Ajouter("@motDePasseHash", SqlDbType.NVarChar, 500, motDePasseHash),
                 annulation);
             return cree!;
@@ -51,6 +51,38 @@ public sealed class DepotUtilisateurs : DepotBase
         {
             throw new CourrielDejaUtiliseException(courrielNormalise, ex);
         }
+    }
+
+    /// <summary>
+    /// Crée le tout premier compte, seulement si la table est vide. La vérification et l'insertion
+    /// se font dans une seule instruction, sous verrou exclusif : deux demandes simultanées
+    /// ne peuvent pas créer deux « premiers » comptes.
+    /// </summary>
+    /// <returns>Le compte créé, ou <c>null</c> si un compte existait déjà.</returns>
+    public Task<Utilisateur?> AjouterPremierAsync(
+        string courriel,
+        string nomAffiche,
+        string motDePasseHash,
+        SessionSql? session = null,
+        CancellationToken annulation = default)
+    {
+        const string sql = """
+            INSERT INTO dbo.Utilisateur (Courriel, NomAffiche, MotDePasseHash)
+            OUTPUT INSERTED.Id, INSERTED.Courriel, INSERTED.NomAffiche,
+                   INSERTED.MotDePasseHash, INSERTED.Actif, INSERTED.DateCreation
+            SELECT @courriel, @nomAffiche, @motDePasseHash
+            WHERE NOT EXISTS (SELECT 1 FROM dbo.Utilisateur WITH (TABLOCKX, HOLDLOCK));
+            """;
+
+        return PremierOuDefautAsync(
+            session,
+            sql,
+            Lire,
+            p => p
+                .Ajouter("@courriel", SqlDbType.NVarChar, Courriel.LongueurMax, Courriel.Normaliser(courriel))
+                .Ajouter("@nomAffiche", SqlDbType.NVarChar, Utilisateur.LongueurMaxNomAffiche, nomAffiche)
+                .Ajouter("@motDePasseHash", SqlDbType.NVarChar, 500, motDePasseHash),
+            annulation);
     }
 
     public Task<Utilisateur?> TrouverParIdAsync(
