@@ -171,6 +171,40 @@ public sealed class ExecuteurMigrationsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task DeuxTablesDeSuivi_SuiventLeursScriptsSeparement()
+    {
+        var autreDossier = Directory.CreateTempSubdirectory("repas-donnees-").FullName;
+        try
+        {
+            EcrireScript("0001_creer_table.sql", "CREATE TABLE dbo.Essai (Valeur INT NOT NULL);");
+            File.WriteAllText(Path.Combine(autreDossier, "0001_ajouter_ligne.sql"), "INSERT INTO dbo.Essai (Valeur) VALUES (1);");
+
+            await CreerExecuteur().AppliquerAsync();
+            var donnees = await new ExecuteurMigrations(_base.ChaineConnexion, autreDossier, "VersionEssai").AppliquerAsync();
+
+            // Le même numéro 0001 est appliqué dans chaque série, chacune dans sa table.
+            Assert.Equal(["0001_ajouter_ligne.sql"], donnees);
+            Assert.Equal(1, await CompterAsync("dbo.Essai"));
+            Assert.Equal(1, await CompterAsync("dbo.VersionSchema"));
+            Assert.Equal(1, await CompterAsync("dbo.VersionEssai"));
+        }
+        finally
+        {
+            Directory.Delete(autreDossier, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("Version;DROP TABLE x")]
+    [InlineData("dbo.Version")]
+    [InlineData("1Version")]
+    public void NomDeTableDeSuiviInvalide_EstRefuse(string table)
+    {
+        Assert.Throws<ArgumentException>(() => new ExecuteurMigrations("Server=x;Database=y", _dossier, table));
+    }
+
+    [Fact]
     public async Task LesFichiersNonSqlSontIgnores()
     {
         EcrireScript(".gitkeep", "");

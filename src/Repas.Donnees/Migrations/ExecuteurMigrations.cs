@@ -7,21 +7,42 @@ namespace Repas.Donnees.Migrations;
 /// <summary>
 /// Applique, en ordre de numéro, les scripts SQL d'un dossier (<c>0001_nom.sql</c>, <c>0002_…</c>).
 /// Chaque script s'exécute une seule fois, dans sa propre transaction, et est consigné
-/// dans la table <c>VersionSchema</c>.
+/// dans une table de suivi (<c>VersionSchema</c> par défaut).
 /// </summary>
 public sealed partial class ExecuteurMigrations
 {
+    /// <summary>Table de suivi des migrations du schéma (<c>db/migrations</c>).</summary>
+    public const string TableSchema = "VersionSchema";
+
+    /// <summary>Table de suivi des données de base (<c>db/seed</c>).</summary>
+    public const string TableDonneesDeBase = "VersionDonneesDeBase";
+
     private readonly string _chaineConnexion;
     private readonly string _dossierScripts;
+    private readonly string _tableSuivi;
 
-    public ExecuteurMigrations(string chaineConnexion, string dossierScripts)
+    /// <param name="tableSuivi">
+    /// Table qui consigne les scripts appliqués. Un nom différent par dossier permet de suivre
+    /// séparément deux séries de scripts numérotés (schéma et données de base).
+    /// </param>
+    public ExecuteurMigrations(string chaineConnexion, string dossierScripts, string tableSuivi = TableSchema)
     {
+        // Le nom de table entre dans le texte SQL (il ne peut pas être paramétré) : lettres et chiffres seulement.
+        if (!NomTableValide().IsMatch(tableSuivi))
+        {
+            throw new ArgumentException($"Nom de table de suivi invalide : « {tableSuivi} ».", nameof(tableSuivi));
+        }
+
         _chaineConnexion = chaineConnexion;
         _dossierScripts = dossierScripts;
+        _tableSuivi = tableSuivi;
     }
 
     [GeneratedRegex(@"^(\d{4})_(.+)\.sql$", RegexOptions.IgnoreCase)]
     private static partial Regex FormatNomFichier();
+
+    [GeneratedRegex(@"^[A-Za-z][A-Za-z0-9]{0,99}$")]
+    private static partial Regex NomTableValide();
 
     private sealed record ScriptMigration(int Numero, string NomFichier, string Chemin);
 
@@ -37,7 +58,7 @@ public sealed partial class ExecuteurMigrations
 
         // Toute erreur SQL annule la transaction en cours au complet.
         await ExecuterAsync(connexion, null, "SET XACT_ABORT ON;", annulation);
-        await CreerTableVersionSchemaAsync(connexion, annulation);
+        await CreerTableSuiviAsync(connexion, annulation);
         var dejaAppliques = await LireNumerosAppliquesAsync(connexion, annulation);
 
         var appliques = new List<string>();
@@ -88,28 +109,27 @@ public sealed partial class ExecuteurMigrations
         return scripts.OrderBy(s => s.Numero).ToList();
     }
 
-    private static Task CreerTableVersionSchemaAsync(SqlConnection connexion, CancellationToken annulation)
+    private Task CreerTableSuiviAsync(SqlConnection connexion, CancellationToken annulation)
     {
-        const string sql = """
-            IF OBJECT_ID(N'dbo.VersionSchema', N'U') IS NULL
+        var sql = $"""
+            IF OBJECT_ID(N'dbo.{_tableSuivi}', N'U') IS NULL
             BEGIN
-                CREATE TABLE dbo.VersionSchema
+                CREATE TABLE dbo.{_tableSuivi}
                 (
-                    Numero          INT           NOT NULL CONSTRAINT PK_VersionSchema PRIMARY KEY,
+                    Numero          INT           NOT NULL CONSTRAINT PK_{_tableSuivi} PRIMARY KEY,
                     Nom             NVARCHAR(200) NOT NULL,
                     DateApplication DATETIME2(0)  NOT NULL
-                        CONSTRAINT DF_VersionSchema_DateApplication DEFAULT SYSUTCDATETIME()
+                        CONSTRAINT DF_{_tableSuivi}_DateApplication DEFAULT SYSUTCDATETIME()
                 );
             END
             """;
         return ExecuterAsync(connexion, null, sql, annulation);
     }
 
-    private static async Task<HashSet<int>> LireNumerosAppliquesAsync(
-        SqlConnection connexion, CancellationToken annulation)
+    private async Task<HashSet<int>> LireNumerosAppliquesAsync(SqlConnection connexion, CancellationToken annulation)
     {
         var numeros = new HashSet<int>();
-        await using var commande = new SqlCommand("SELECT Numero FROM dbo.VersionSchema;", connexion);
+        await using var commande = new SqlCommand($"SELECT Numero FROM dbo.{_tableSuivi};", connexion);
         await using var lecteur = await commande.ExecuteReaderAsync(annulation);
         while (await lecteur.ReadAsync(annulation))
         {
@@ -119,7 +139,7 @@ public sealed partial class ExecuteurMigrations
         return numeros;
     }
 
-    private static async Task AppliquerScriptAsync(
+    private async Task AppliquerScriptAsync(
         SqlConnection connexion, ScriptMigration script, CancellationToken annulation)
     {
         var contenu = await File.ReadAllTextAsync(script.Chemin, annulation);
@@ -134,7 +154,7 @@ public sealed partial class ExecuteurMigrations
             }
 
             await using var consigne = new SqlCommand(
-                "INSERT INTO dbo.VersionSchema (Numero, Nom) VALUES (@numero, @nom);", connexion, transaction);
+                $"INSERT INTO dbo.{_tableSuivi} (Numero, Nom) VALUES (@numero, @nom);", connexion, transaction);
             consigne.Parameters.Add("@numero", SqlDbType.Int).Value = script.Numero;
             consigne.Parameters.Add("@nom", SqlDbType.NVarChar, 200).Value = script.NomFichier;
             await consigne.ExecuteNonQueryAsync(annulation);
@@ -153,7 +173,8 @@ public sealed partial class ExecuteurMigrations
             }
 
             throw new MigrationException(
-                $"La migration « {script.NomFichier} » a échoué et a été annulée au complet : {ex.Message}", ex);
+                $"Le script « {script.NomFichier} » de {Path.GetFileName(_dossierScripts)} a échoué " +
+                $"et a été annulé au complet : {ex.Message}", ex);
         }
     }
 

@@ -5,9 +5,10 @@
     <ProjectReference Include="..\Repas.Donnees\Repas.Donnees.csproj" />
   </ItemGroup>
 
-  <!-- Les scripts de db/migrations suivent l'app (bin et publication) ; l'exécuteur les lit au démarrage. -->
+  <!-- Les scripts de db/migrations et db/seed suivent l'app (bin et publication) ; l'exécuteur les lit au démarrage. -->
   <ItemGroup>
-    <Content Include="..\..\db\migrations\*" Link="db\migrations\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\db\migrations\*.sql" Link="db\migrations\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\db\seed\*.sql" Link="db\seed\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <PropertyGroup>

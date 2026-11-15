@@ -78,9 +78,11 @@ que `sa`. Elle doit pouvoir créer ses tables : elle est donc propriétaire de s
    docker exec -i <conteneur-sql> /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P '<mot de passe sa>' < create-database.sql
    ```
 
-Les migrations s'appliquent ensuite toutes seules à chaque démarrage de l'app ; un
-démarrage sans nouvelle migration ne change rien. Si une migration échoue, le conteneur
-s'arrête et son journal donne la raison.
+Les migrations (`db/migrations`) puis les données de base (`db/seed` : catégories, unités,
+ingrédients courants) s'appliquent ensuite toutes seules au démarrage de l'app, chaque script
+une seule fois. Un démarrage sans nouveau script ne change rien, et les données de base
+modifiées dans l'app ne sont jamais écrasées. Si un script échoue, le conteneur s'arrête et
+son journal donne la raison.
 
 ### 2. Conteneur
 
@@ -143,7 +145,7 @@ Server=<serveur>,1433;Database=Repas;User Id=repas;Password=<mot de passe>;Trust
 personnalisé, sinon l'adresse IP du serveur Unraid.
 
 Au premier démarrage, le journal du conteneur doit afficher
-`1 migration(s) appliquée(s)` (ou plus). L'app attend ensuite le proxy HTTPS (story 7.3) :
+`Migrations : … script(s) appliqué(s)` puis `Données de base : … script(s) appliqué(s)`. L'app attend ensuite le proxy HTTPS (story 7.3) :
 en HTTP simple, elle refuse d'émettre son cookie de connexion.
 
 ### 3. Mise à jour

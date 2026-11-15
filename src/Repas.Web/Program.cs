@@ -97,24 +97,24 @@ builder.Services.AddScoped<AuthenticationStateProvider, EtatAuthentificationReva
 
 var app = builder.Build();
 
-// Prépare la base avant d'accepter des requêtes : création au besoin, puis migrations.
+// Prépare la base avant d'accepter des requêtes : création au besoin, migrations du schéma,
+// puis données de base (catégories, unités, ingrédients courants), chacune appliquée une seule fois.
 // Un échec arrête le démarrage, pour ne jamais servir l'app sur un schéma incomplet.
 try
 {
     await baseDeDonnees.AssurerExistenceAsync();
 
-    var dossierMigrations = Path.Combine(AppContext.BaseDirectory, "db", "migrations");
-    var appliquees = await new ExecuteurMigrations(chaineConnexion, dossierMigrations).AppliquerAsync();
+    var migrations = await new ExecuteurMigrations(
+        chaineConnexion,
+        Path.Combine(AppContext.BaseDirectory, "db", "migrations"),
+        ExecuteurMigrations.TableSchema).AppliquerAsync();
+    JournaliserScripts(app.Logger, "Migrations", migrations);
 
-    if (appliquees.Count == 0)
-    {
-        app.Logger.LogInformation("Base de données à jour : aucune migration à appliquer.");
-    }
-    else
-    {
-        app.Logger.LogInformation(
-            "{Nombre} migration(s) appliquée(s) : {Scripts}", appliquees.Count, string.Join(", ", appliquees));
-    }
+    var donneesDeBase = await new ExecuteurMigrations(
+        chaineConnexion,
+        Path.Combine(AppContext.BaseDirectory, "db", "seed"),
+        ExecuteurMigrations.TableDonneesDeBase).AppliquerAsync();
+    JournaliserScripts(app.Logger, "Données de base", donneesDeBase);
 }
 catch (Exception ex)
 {
@@ -164,3 +164,16 @@ app.MapPost("/deconnexion", async (HttpContext contexte, IAntiforgery antiforger
 
 app.Run();
 return 0;
+
+static void JournaliserScripts(ILogger journal, string serie, IReadOnlyList<string> appliques)
+{
+    if (appliques.Count == 0)
+    {
+        journal.LogInformation("{Serie} : à jour, aucun nouveau script.", serie);
+    }
+    else
+    {
+        journal.LogInformation(
+            "{Serie} : {Nombre} script(s) appliqué(s) : {Scripts}", serie, appliques.Count, string.Join(", ", appliques));
+    }
+}

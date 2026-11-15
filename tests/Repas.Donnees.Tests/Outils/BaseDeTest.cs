@@ -36,17 +36,30 @@ public sealed class BaseDeTest : IAsyncDisposable
         return new BaseDeTest(constructeur.ConnectionString, nomBase);
     }
 
-    /// <summary>Crée une base de test et y applique les vraies migrations de <c>db/migrations</c>.</summary>
-    public static async Task<BaseDeTest> CreerAvecSchemaAsync()
-    {
-        var racine = TrouverRacineDepot()
-            ?? throw new InvalidOperationException("Racine du dépôt (Repas.slnx) introuvable à partir du dossier des tests.");
+    /// <summary>Dossier des scripts de données de base du dépôt (<c>db/seed</c>).</summary>
+    public static string DossierDonneesDeBase => Path.Combine(RacineDepot, "db", "seed");
 
+    private static string RacineDepot => TrouverRacineDepot()
+        ?? throw new InvalidOperationException("Racine du dépôt (Repas.slnx) introuvable à partir du dossier des tests.");
+
+    /// <summary>
+    /// Crée une base de test et y applique les vraies migrations de <c>db/migrations</c>,
+    /// puis, si demandé, les données de base de <c>db/seed</c>.
+    /// </summary>
+    public static async Task<BaseDeTest> CreerAvecSchemaAsync(bool avecDonneesDeBase = false)
+    {
         var baseDeTest = await CreerAsync();
         try
         {
-            var dossierMigrations = Path.Combine(racine, "db", "migrations");
+            var dossierMigrations = Path.Combine(RacineDepot, "db", "migrations");
             await new ExecuteurMigrations(baseDeTest.ChaineConnexion, dossierMigrations).AppliquerAsync();
+
+            if (avecDonneesDeBase)
+            {
+                await new ExecuteurMigrations(
+                    baseDeTest.ChaineConnexion, DossierDonneesDeBase, ExecuteurMigrations.TableDonneesDeBase).AppliquerAsync();
+            }
+
             return baseDeTest;
         }
         catch
