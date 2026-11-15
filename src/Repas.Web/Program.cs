@@ -15,6 +15,7 @@ if (string.IsNullOrWhiteSpace(chaineConnexion))
 
 var baseDeDonnees = new BaseDeDonnees(chaineConnexion);
 builder.Services.AddSingleton(baseDeDonnees);
+builder.Services.AddSingleton<DepotUtilisateurs>();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();

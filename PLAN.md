@@ -20,7 +20,7 @@ Référence : `docs/PROJET-REPAS.md` (spécification) et `CLAUDE.md` (règles).
   - *Critères :* aucun ORM ; un test d'intégration lit et écrit une ligne.
 
 ## Itération 1 — Comptes et connexion
-- [ ] **1.1 Table `Utilisateur`** (migration) et dépôt.
+- [x] **1.1 Table `Utilisateur`** (migration) et dépôt.
 - [ ] **1.2 Connexion / déconnexion** par cookie, mots de passe hachés avec `PasswordHasher<T>`.
   - *Critères :* toutes les pages exigent une connexion ; mauvais mot de passe → message générique ; session persistante (« rester connecté »).
 - [ ] **1.3 Premier compte** : au premier démarrage (aucun utilisateur), une page permet de créer le compte administrateur.

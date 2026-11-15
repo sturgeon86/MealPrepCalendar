@@ -1,6 +1,7 @@
 using System.Data;
 using System.Text.Json;
 using Microsoft.Data.SqlClient;
+using Repas.Donnees.Migrations;
 
 namespace Repas.Donnees.Tests.Outils;
 
@@ -33,6 +34,26 @@ public sealed class BaseDeTest : IAsyncDisposable
 
         await new BaseDeDonnees(constructeur.ConnectionString).AssurerExistenceAsync();
         return new BaseDeTest(constructeur.ConnectionString, nomBase);
+    }
+
+    /// <summary>Crée une base de test et y applique les vraies migrations de <c>db/migrations</c>.</summary>
+    public static async Task<BaseDeTest> CreerAvecSchemaAsync()
+    {
+        var racine = TrouverRacineDepot()
+            ?? throw new InvalidOperationException("Racine du dépôt (Repas.slnx) introuvable à partir du dossier des tests.");
+
+        var baseDeTest = await CreerAsync();
+        try
+        {
+            var dossierMigrations = Path.Combine(racine, "db", "migrations");
+            await new ExecuteurMigrations(baseDeTest.ChaineConnexion, dossierMigrations).AppliquerAsync();
+            return baseDeTest;
+        }
+        catch
+        {
+            await baseDeTest.DisposeAsync();
+            throw;
+        }
     }
 
     public async Task ExecuterAsync(string sql)
@@ -104,12 +125,23 @@ public sealed class BaseDeTest : IAsyncDisposable
 
     private static string? TrouverConfigLocale()
     {
+        var racine = TrouverRacineDepot();
+        if (racine is null)
+        {
+            return null;
+        }
+
+        var chemin = Path.Combine(racine, "src", "Repas.Web", "appsettings.Development.json");
+        return File.Exists(chemin) ? chemin : null;
+    }
+
+    private static string? TrouverRacineDepot()
+    {
         for (var dossier = new DirectoryInfo(AppContext.BaseDirectory); dossier is not null; dossier = dossier.Parent)
         {
             if (File.Exists(Path.Combine(dossier.FullName, "Repas.slnx")))
             {
-                var chemin = Path.Combine(dossier.FullName, "src", "Repas.Web", "appsettings.Development.json");
-                return File.Exists(chemin) ? chemin : null;
+                return dossier.FullName;
             }
         }
 
