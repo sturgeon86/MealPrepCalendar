@@ -21,13 +21,20 @@ services:
   app:
     build: .
     environment:
+      # Development : autorise les cookies en HTTP (http://localhost), ce que la production refuse.
       ASPNETCORE_ENVIRONMENT: "Development"
       ConnectionStrings__Repas: "Server=sql;Database=Repas;User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True"
+      TZ: "America/Toronto"
     ports:
       - "5180:8080"
+    volumes:
+      - cles:/data/keys
+      - photos:/data/photos
     depends_on:
       sql:
         condition: service_healthy
 
 volumes:
   sql-donnees:
+  cles:
+  photos:

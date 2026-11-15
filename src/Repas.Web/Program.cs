@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using Repas.Domaine.Utilisateurs;
 using Repas.Donnees;
 using Repas.Donnees.Migrations;
@@ -29,11 +31,20 @@ builder.Services.AddSingleton<ServicePremierCompte>();
 builder.Services.AddSingleton<SuiviComptesActifs>();
 builder.Services.AddSingleton<ServiceComptes>();
 
+// Les cookies ne voyagent qu'en HTTPS. Auth:AllowInsecureHttp=true assouplit cette règle pour les
+// essais en HTTP local seulement ; c'est le réglage par défaut en environnement Development.
+var autoriserHttp = builder.Configuration.GetValue<bool?>("Auth:AllowInsecureHttp")
+    ?? builder.Environment.IsDevelopment();
+var politiqueCookies = autoriserHttp ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
+
 builder.Services
     .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
         options.Cookie.Name = "Repas.Auth";
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SecurePolicy = politiqueCookies;
+        options.Cookie.SameSite = SameSiteMode.Lax;
         options.LoginPath = "/connexion";
         options.AccessDeniedPath = "/connexion";
         options.ReturnUrlParameter = "retour";
@@ -58,6 +69,25 @@ builder.Services
 builder.Services.AddAuthorizationBuilder()
     .SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
 builder.Services.AddCascadingAuthenticationState();
+builder.Services.AddAntiforgery(options => options.Cookie.SecurePolicy = politiqueCookies);
+
+// Les clés qui chiffrent le cookie de connexion doivent survivre aux redémarrages du conteneur,
+// sinon chaque redémarrage déconnecte tout le monde.
+var protectionDonnees = builder.Services.AddDataProtection().SetApplicationName("Repas");
+var cheminCles = builder.Configuration["DataProtection:KeysPath"];
+if (!string.IsNullOrWhiteSpace(cheminCles))
+{
+    protectionDonnees.PersistKeysToFileSystem(new DirectoryInfo(cheminCles));
+}
+
+// Le proxy inverse termine le HTTPS. Son adresse dans le réseau Docker n'est pas connue d'avance,
+// donc toute source est acceptée : le port 8080 ne doit être joignable que par le proxy.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
@@ -92,14 +122,21 @@ catch (Exception ex)
     return 1;
 }
 
+if (autoriserHttp)
+{
+    app.Logger.LogWarning(
+        "Auth:AllowInsecureHttp est actif : les cookies peuvent voyager en HTTP. À ne jamais utiliser sur un déploiement public.");
+}
+
+// En premier : les étapes suivantes doivent voir le schéma (https) et l'adresse transmis par le proxy.
+app.UseForwardedHeaders();
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
-app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseAuthorization();

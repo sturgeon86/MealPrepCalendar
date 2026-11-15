@@ -1,9 +1,13 @@
 **/bin/
 **/obj/
 .git/
+.github/
 .vs/
+.vscode/
+.idea/
 .claude/
 .env
 **/appsettings.Development.json
 tests/
 docs/
+*.md
