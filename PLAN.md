@@ -14,7 +14,7 @@ Référence : `docs/PROJET-REPAS.md` (spécification) et `CLAUDE.md` (règles).
   - *Critères :* `docker compose up` démarre l'app, qui se connecte à la base.
 - [x] **0.3 Exécuteur de migrations** : table `VersionSchema`, lecture des scripts de `db/migrations/` en ordre, exécution au démarrage dans une transaction par script.
   - *Critères :* un script déjà appliqué n'est jamais réexécuté ; un échec arrête le démarrage avec un message clair ; tests d'intégration.
-- [ ] **0.4 Couche d'accès aux données** : classe de base pour ouvrir les connexions, exécuter des requêtes paramétrées et gérer les transactions.
+- [x] **0.4 Couche d'accès aux données** : classe de base pour ouvrir les connexions, exécuter des requêtes paramétrées et gérer les transactions.
   - *Critères :* aucun ORM ; un test d'intégration lit et écrit une ligne.
 
 ## Itération 1 — Comptes et connexion
