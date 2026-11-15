@@ -1,9 +1,27 @@
 ﻿@inherits LayoutComponentBase
 
-@Body
+<header class="entete">
+    <a class="titre-app" href="">Planificateur de repas</a>
+    <AuthorizeView>
+        <Authorized>
+            <div class="compte">
+                <span class="nom-utilisateur">@context.User.Identity?.Name</span>
+                @* Formulaire HTTP ordinaire : le cookie est retiré par le serveur, pas par le circuit interactif. *@
+                <form method="post" action="deconnexion">
+                    <AntiforgeryToken />
+                    <button type="submit" class="bouton-lien">Se déconnecter</button>
+                </form>
+            </div>
+        </Authorized>
+    </AuthorizeView>
+</header>
+
+<main class="contenu">
+    @Body
+</main>
 
 <div id="blazor-error-ui" data-nosnippet>
-    An unhandled error has occurred.
-    <a href="." class="reload">Reload</a>
+    Une erreur inattendue s'est produite.
+    <a href="." class="reload">Recharger</a>
     <span class="dismiss">🗙</span>
 </div>
