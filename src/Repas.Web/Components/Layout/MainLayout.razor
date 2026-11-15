@@ -5,7 +5,8 @@
     <AuthorizeView>
         <Authorized>
             <div class="compte">
-                <span class="nom-utilisateur">@context.User.Identity?.Name</span>
+                <a class="lien-entete" href="comptes">Comptes</a>
+                <a class="lien-entete nom-utilisateur" href="mon-compte" title="Mon compte">@context.User.Identity?.Name</a>
                 @* Formulaire HTTP ordinaire : le cookie est retiré par le serveur, pas par le circuit interactif. *@
                 <form method="post" action="deconnexion">
                     <AntiforgeryToken />

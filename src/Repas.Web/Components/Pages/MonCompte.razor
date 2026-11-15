@@ -1,0 +1,119 @@
+@page "/mon-compte"
+@using System.ComponentModel.DataAnnotations
+@using Repas.Domaine.Utilisateurs
+@using Repas.Web.Authentification
+@inject ServiceComptes ServiceComptes
+
+<PageTitle>Mon compte</PageTitle>
+
+<h1>Mon compte</h1>
+
+@if (_utilisateur is not null)
+{
+    <dl class="fiche">
+        <dt>Nom affiché</dt>
+        <dd>@_utilisateur.NomAffiche</dd>
+        <dt>Courriel</dt>
+        <dd>@_utilisateur.Courriel</dd>
+    </dl>
+}
+
+<section class="carte-formulaire">
+    <h2>Changer mon mot de passe</h2>
+
+    <EditForm Model="_saisie" OnValidSubmit="ChangerAsync">
+        <DataAnnotationsValidator />
+
+        @if (_message is not null)
+        {
+            <p class="message-succes" role="status">@_message</p>
+        }
+        @if (_erreur is not null)
+        {
+            <p class="message-erreur" role="alert">@_erreur</p>
+        }
+
+        <div class="champ">
+            <label for="mot-de-passe-actuel">Mot de passe actuel</label>
+            <InputText id="mot-de-passe-actuel" type="password" @bind-Value="_saisie.Actuel" autocomplete="current-password" />
+            <ValidationMessage For="() => _saisie.Actuel" />
+        </div>
+
+        <div class="champ">
+            <label for="nouveau-mot-de-passe">Nouveau mot de passe</label>
+            <InputText id="nouveau-mot-de-passe" type="password" @bind-Value="_saisie.Nouveau"
+                       autocomplete="new-password" aria-describedby="aide-nouveau-mot-de-passe" />
+            <small id="aide-nouveau-mot-de-passe" class="aide">Au moins @MotDePasse.LongueurMin caractères.</small>
+            <ValidationMessage For="() => _saisie.Nouveau" />
+        </div>
+
+        <div class="champ">
+            <label for="confirmation">Confirmer le nouveau mot de passe</label>
+            <InputText id="confirmation" type="password" @bind-Value="_saisie.Confirmation" autocomplete="new-password" />
+            <ValidationMessage For="() => _saisie.Confirmation" />
+        </div>
+
+        <button type="submit" class="bouton-principal" disabled="@_enCours">Changer le mot de passe</button>
+    </EditForm>
+</section>
+
+@code {
+    private Utilisateur? _utilisateur;
+    private int _idCourant;
+    private SaisieMotDePasse _saisie = new();
+    private bool _enCours;
+    private string? _message;
+    private string? _erreur;
+
+    [CascadingParameter]
+    private Task<AuthenticationState> EtatAuthentification { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _idCourant = (await EtatAuthentification).User.ObtenirIdUtilisateur() ?? 0;
+        _utilisateur = await ServiceComptes.TrouverAsync(_idCourant);
+    }
+
+    private async Task ChangerAsync()
+    {
+        _message = null;
+        _erreur = null;
+        _enCours = true;
+        try
+        {
+            if (await ServiceComptes.ChangerMotDePasseAsync(_idCourant, _saisie.Actuel, _saisie.Nouveau))
+            {
+                _message = "Votre mot de passe est changé.";
+            }
+            else
+            {
+                _erreur = "Le mot de passe actuel est incorrect.";
+            }
+
+            // Dans les deux cas, les champs sont vidés.
+            _saisie = new SaisieMotDePasse();
+        }
+        finally
+        {
+            _enCours = false;
+        }
+    }
+
+    private sealed class SaisieMotDePasse
+    {
+        [Required(ErrorMessage = "Le mot de passe actuel est requis.")]
+        [StringLength(MotDePasse.LongueurMax, ErrorMessage = "Le mot de passe est trop long.")]
+        public string Actuel { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Le nouveau mot de passe est requis.")]
+        [StringLength(
+            MotDePasse.LongueurMax,
+            MinimumLength = MotDePasse.LongueurMin,
+            ErrorMessage = "Le mot de passe doit compter au moins {2} caractères.")]
+        public string Nouveau { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "La confirmation est requise.")]
+        [Compare(nameof(Nouveau), ErrorMessage = "Les deux mots de passe ne sont pas identiques.")]
+        public string Confirmation { get; set; } = string.Empty;
+    }
+}

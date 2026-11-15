@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Components.Authorization;
 using Repas.Domaine.Utilisateurs;
 using Repas.Donnees;
 using Repas.Donnees.Migrations;
@@ -25,6 +26,8 @@ builder.Services.AddSingleton<DepotUtilisateurs>();
 builder.Services.AddSingleton<IHacheurMotDePasse, HacheurMotDePasse>();
 builder.Services.AddSingleton<ServiceConnexion>();
 builder.Services.AddSingleton<ServicePremierCompte>();
+builder.Services.AddSingleton<SuiviComptesActifs>();
+builder.Services.AddSingleton<ServiceComptes>();
 
 builder.Services
     .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -37,6 +40,18 @@ builder.Services
         // Durée d'une session « rester connecté » ; prolongée tant que l'app est utilisée.
         options.ExpireTimeSpan = TimeSpan.FromDays(30);
         options.SlidingExpiration = true;
+
+        // À chaque requête : le cookie d'un compte désactivé (ou disparu) est refusé et retiré.
+        options.Events.OnValidatePrincipal = async contexte =>
+        {
+            var suivi = contexte.HttpContext.RequestServices.GetRequiredService<SuiviComptesActifs>();
+            var id = contexte.Principal?.ObtenirIdUtilisateur();
+            if (id is null || !await suivi.EstActifAsync(id.Value, contexte.HttpContext.RequestAborted))
+            {
+                contexte.RejectPrincipal();
+                await contexte.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+            }
+        };
     });
 
 // Toute page ou tout point d'accès sans indication contraire exige une connexion.
@@ -46,6 +61,9 @@ builder.Services.AddCascadingAuthenticationState();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+
+// Remplace le fournisseur par défaut : revérifie le compte pendant qu'une page interactive reste ouverte.
+builder.Services.AddScoped<AuthenticationStateProvider, EtatAuthentificationRevalide>();
 
 var app = builder.Build();
 

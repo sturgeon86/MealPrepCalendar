@@ -1,0 +1,171 @@
+@page "/comptes"
+@using System.ComponentModel.DataAnnotations
+@using Repas.Domaine.Utilisateurs
+@using Repas.Web.Authentification
+@inject ServiceComptes ServiceComptes
+
+<PageTitle>Comptes</PageTitle>
+
+<h1>Comptes de la famille</h1>
+
+@if (_messageListe is not null)
+{
+    <p class="message-erreur" role="alert">@_messageListe</p>
+}
+
+@if (_comptes is null)
+{
+    <p>Chargement…</p>
+}
+else
+{
+    <ul class="liste-comptes">
+        @foreach (var compte in _comptes)
+        {
+            <li @key="compte.Id" class="@(compte.Actif ? null : "inactif")">
+                <div class="infos-compte">
+                    <span class="nom-compte">
+                        @compte.NomAffiche
+                        @if (compte.Id == _idCourant)
+                        {
+                            <span class="pastille">Vous</span>
+                        }
+                        @if (!compte.Actif)
+                        {
+                            <span class="pastille pastille-alerte">Désactivé</span>
+                        }
+                    </span>
+                    <span class="courriel-compte">@compte.Courriel</span>
+                </div>
+                @if (GestionComptes.PeutModifierActif(_idCourant, compte.Id))
+                {
+                    <button type="button" class="bouton-secondaire" @onclick="() => BasculerActifAsync(compte)">
+                        @(compte.Actif ? "Désactiver" : "Réactiver")
+                    </button>
+                }
+            </li>
+        }
+    </ul>
+}
+
+<section class="carte-formulaire">
+    <h2>Ajouter un membre de la famille</h2>
+
+    <EditForm Model="_saisie" OnValidSubmit="CreerAsync">
+        <DataAnnotationsValidator />
+
+        @if (_messageCreation is not null)
+        {
+            <p class="message-succes" role="status">@_messageCreation</p>
+        }
+        @if (_erreurCreation is not null)
+        {
+            <p class="message-erreur" role="alert">@_erreurCreation</p>
+        }
+
+        <div class="champ">
+            <label for="nom-affiche">Nom affiché</label>
+            <InputText id="nom-affiche" @bind-Value="_saisie.NomAffiche" autocomplete="off" />
+            <ValidationMessage For="() => _saisie.NomAffiche" />
+        </div>
+
+        <div class="champ">
+            <label for="courriel">Courriel</label>
+            <InputText id="courriel" type="email" @bind-Value="_saisie.Courriel" autocomplete="off" />
+            <ValidationMessage For="() => _saisie.Courriel" />
+        </div>
+
+        <div class="champ">
+            <label for="mot-de-passe">Mot de passe</label>
+            <InputText id="mot-de-passe" type="password" @bind-Value="_saisie.MotDePasse"
+                       autocomplete="new-password" aria-describedby="aide-mot-de-passe" />
+            <small id="aide-mot-de-passe" class="aide">
+                Au moins @MotDePasse.LongueurMin caractères. La personne pourra le changer dans « Mon compte ».
+            </small>
+            <ValidationMessage For="() => _saisie.MotDePasse" />
+        </div>
+
+        <div class="champ">
+            <label for="confirmation">Confirmer le mot de passe</label>
+            <InputText id="confirmation" type="password" @bind-Value="_saisie.Confirmation" autocomplete="new-password" />
+            <ValidationMessage For="() => _saisie.Confirmation" />
+        </div>
+
+        <button type="submit" class="bouton-principal" disabled="@_enCours">Créer le compte</button>
+    </EditForm>
+</section>
+
+@code {
+    private List<Utilisateur>? _comptes;
+    private int _idCourant;
+    private SaisieCompte _saisie = new();
+    private bool _enCours;
+    private string? _messageListe;
+    private string? _messageCreation;
+    private string? _erreurCreation;
+
+    [CascadingParameter]
+    private Task<AuthenticationState> EtatAuthentification { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _idCourant = (await EtatAuthentification).User.ObtenirIdUtilisateur() ?? 0;
+        _comptes = await ServiceComptes.ListerAsync();
+    }
+
+    private async Task BasculerActifAsync(Utilisateur compte)
+    {
+        _messageListe = null;
+        if (!await ServiceComptes.ModifierActifAsync(_idCourant, compte.Id, !compte.Actif))
+        {
+            _messageListe = "Ce compte n'a pas pu être modifié.";
+        }
+
+        _comptes = await ServiceComptes.ListerAsync();
+    }
+
+    private async Task CreerAsync()
+    {
+        _messageCreation = null;
+        _erreurCreation = null;
+        _enCours = true;
+        try
+        {
+            var cree = await ServiceComptes.CreerAsync(_saisie.NomAffiche, _saisie.Courriel, _saisie.MotDePasse);
+            _messageCreation = $"Le compte « {cree.NomAffiche} » est créé.";
+            _saisie = new SaisieCompte();
+            _comptes = await ServiceComptes.ListerAsync();
+        }
+        catch (CourrielDejaUtiliseException)
+        {
+            _erreurCreation = "Un compte existe déjà avec ce courriel.";
+        }
+        finally
+        {
+            _enCours = false;
+        }
+    }
+
+    private sealed class SaisieCompte
+    {
+        [Required(ErrorMessage = "Le nom affiché est requis.")]
+        [StringLength(Utilisateur.LongueurMaxNomAffiche, ErrorMessage = "Le nom affiché est trop long.")]
+        public string NomAffiche { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Le courriel est requis.")]
+        [EmailAddress(ErrorMessage = "Le courriel n'est pas valide.")]
+        [StringLength(Repas.Domaine.Utilisateurs.Courriel.LongueurMax, ErrorMessage = "Le courriel est trop long.")]
+        public string Courriel { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Le mot de passe est requis.")]
+        [StringLength(
+            Repas.Domaine.Utilisateurs.MotDePasse.LongueurMax,
+            MinimumLength = Repas.Domaine.Utilisateurs.MotDePasse.LongueurMin,
+            ErrorMessage = "Le mot de passe doit compter au moins {2} caractères.")]
+        public string MotDePasse { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "La confirmation est requise.")]
+        [Compare(nameof(MotDePasse), ErrorMessage = "Les deux mots de passe ne sont pas identiques.")]
+        public string Confirmation { get; set; } = string.Empty;
+    }
+}

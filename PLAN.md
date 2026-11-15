@@ -24,7 +24,7 @@ Référence : `docs/PROJET-REPAS.md` (spécification) et `CLAUDE.md` (règles).
 - [x] **1.2 Connexion / déconnexion** par cookie, mots de passe hachés avec `PasswordHasher<T>`.
   - *Critères :* toutes les pages exigent une connexion ; mauvais mot de passe → message générique ; session persistante (« rester connecté »).
 - [x] **1.3 Premier compte** : au premier démarrage (aucun utilisateur), une page permet de créer le compte administrateur.
-- [ ] **1.4 Gestion des comptes** : un utilisateur connecté peut créer un compte pour un membre de la famille, et chacun peut changer son mot de passe.
+- [x] **1.4 Gestion des comptes** : un utilisateur connecté peut créer un compte pour un membre de la famille, et chacun peut changer son mot de passe.
   - *Critères :* courriel unique ; un compte peut être désactivé.
 
 ## Itération 7 (devancée) — Mise en production
