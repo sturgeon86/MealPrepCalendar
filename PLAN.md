@@ -3,6 +3,8 @@
 Plan de développement par itérations (Agile). Une story à la fois, validée avant de passer à la suivante.
 Référence : `docs/PROJET-REPAS.md` (spécification) et `CLAUDE.md` (règles).
 
+**Ordre de travail :** les sections se font de haut en bas. Le déploiement sur Unraid (stories 7.1 à 7.3) est devancé juste après l'itération 1, pour voir l'avancement sur le serveur dès que la connexion existe. Les numéros de stories n'ont pas été changés. Une fois l'app déployée, le conteneur Unraid est mis à jour après chaque story validée.
+
 ---
 
 # Phase 1 — MVP
@@ -24,6 +26,14 @@ Référence : `docs/PROJET-REPAS.md` (spécification) et `CLAUDE.md` (règles).
 - [ ] **1.3 Premier compte** : au premier démarrage (aucun utilisateur), une page permet de créer le compte administrateur.
 - [ ] **1.4 Gestion des comptes** : un utilisateur connecté peut créer un compte pour un membre de la famille, et chacun peut changer son mot de passe.
   - *Critères :* courriel unique ; un compte peut être désactivé.
+
+## Itération 7 (devancée) — Mise en production
+À faire dès que l'itération 1 est terminée : l'app ne doit pas être exposée sous le domaine avant que la connexion existe.
+- [ ] **7.1 Image Docker de production** : variables d'environnement, volume pour les photos, volume pour les clés de protection des données ASP.NET (sinon les sessions sont perdues à chaque redémarrage).
+  - *À décider :* publication de l'image sur GHCR par une GitHub Action à chaque push sur `main`, ou construction de l'image directement sur Unraid.
+- [ ] **7.2 Déploiement Unraid** : modèle de conteneur, connexion au SQL Server existant, création de la base dédiée.
+  - *Critères :* la mise à jour du conteneur vers une nouvelle version de l'image est documentée et se fait en une étape.
+- [ ] **7.3 Nginx Proxy Manager** : sous-domaine, certificat HTTPS, prise en charge des WebSockets (nécessaire pour Blazor Server).
 
 ## Itération 2 — Référentiel d'ingrédients
 - [ ] **2.1 Tables** `Categorie`, `Unite`, `Ingredient`, `IngredientSynonyme` (migration).
@@ -65,11 +75,10 @@ Référence : `docs/PROJET-REPAS.md` (spécification) et `CLAUDE.md` (règles).
 - [ ] **6.3 Terminer la liste** : affiche les articles non cochés, permet de les reporter (tous ou un par un) sur la prochaine liste.
   - *Critères :* les articles reportés portent la mention *(reporté)* et ne disparaissent pas à la regénération.
 
-## Itération 7 — Mise en production
-- [ ] **7.1 Image Docker de production** : variables d'environnement, volume pour les photos, volume pour les clés de protection des données ASP.NET (sinon les sessions sont perdues à chaque redémarrage).
-- [ ] **7.2 Déploiement Unraid** : modèle de conteneur, connexion au SQL Server existant, création de la base dédiée.
-- [ ] **7.3 Nginx Proxy Manager** : sous-domaine, certificat HTTPS, prise en charge des WebSockets (nécessaire pour Blazor Server).
+## Itération 7 (suite) — Sauvegarde
+Les stories 7.1 à 7.3 sont plus haut, après l'itération 1.
 - [ ] **7.4 Sauvegarde** : script de sauvegarde de la base et du dossier des photos.
+  - *Critères :* en place avant de saisir de vraies données dans l'app.
 
 ---
 
