@@ -62,6 +62,27 @@ public abstract class DepotBase
         return AvecSessionAsync(session, s => s.PremierOuDefautAsync(sql, lire, parametres, annulation), annulation);
     }
 
+    /// <summary>
+    /// Exécute plusieurs requêtes comme un tout : dans la transaction reçue s'il y en a une,
+    /// sinon dans une nouvelle transaction, validée à la fin.
+    /// </summary>
+    protected Task<T> DansTransactionAsync<T>(
+        SessionSql? session, Func<SessionSql, Task<T>> travail, CancellationToken annulation = default)
+    {
+        return session is not null ? travail(session) : _baseDeDonnees.DansTransactionAsync(travail, annulation);
+    }
+
+    /// <summary>
+    /// Lit un DECIMAL sans les zéros de fin imposés par l'échelle de la colonne
+    /// (0,7500 devient 0,75), pour un affichage naturel. La valeur ne change pas.
+    /// </summary>
+    protected static decimal? LireDecimal(SqlDataReader lecteur, int colonne) =>
+        lecteur.IsDBNull(colonne) ? null : lecteur.GetDecimal(colonne) / 1.000000000000000000000000000000000m;
+
+    /// <summary>Numéros d'erreur SQL Server d'une violation de contrainte ou d'index unique.</summary>
+    protected static bool EstViolationUnicite(SqlException ex, string nomContrainte) =>
+        ex.Number is 2627 or 2601 && ex.Message.Contains(nomContrainte, StringComparison.Ordinal);
+
     private async Task<T> AvecSessionAsync<T>(
         SessionSql? session, Func<SessionSql, Task<T>> requete, CancellationToken annulation)
     {

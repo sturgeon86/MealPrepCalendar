@@ -1,0 +1,137 @@
+@page "/categories"
+@using Repas.Domaine.Referentiel
+@using Repas.Donnees
+@inject DepotCategories DepotCategories
+
+<PageTitle>Catégories</PageTitle>
+
+<p><a href="ingredients">← Ingrédients</a></p>
+
+<h1>Catégories d'épicerie</h1>
+<p class="aide">L'ordre suit le trajet en magasin : la liste d'épicerie présentera les catégories dans cet ordre.</p>
+
+@if (_erreur is not null)
+{
+    <p class="message-erreur" role="alert">@_erreur</p>
+}
+
+<ol class="liste-cartes liste-ordonnee">
+    @for (var i = 0; i < _categories.Count; i++)
+    {
+        var categorie = _categories[i];
+        var position = i;
+        <li @key="categorie.Id">
+            @if (_enRenommage == categorie.Id)
+            {
+                <form class="renommage" @onsubmit="() => RenommerAsync(categorie)" @onsubmit:preventDefault>
+                    <label class="visuellement-cache" for="renommer-@categorie.Id">Nouveau nom de @categorie.Nom</label>
+                    <input id="renommer-@categorie.Id" @bind="_nouveauNom" maxlength="@Categorie.LongueurMaxNom" autocomplete="off" />
+                    <button type="submit" class="bouton-secondaire">OK</button>
+                    <button type="button" class="bouton-secondaire" @onclick="AnnulerRenommage">Annuler</button>
+                </form>
+            }
+            else
+            {
+                <span class="nom-ligne">@categorie.Nom</span>
+                <span class="actions-ligne">
+                    <button type="button" class="bouton-icone" title="Monter" aria-label="Monter @categorie.Nom"
+                            disabled="@(position == 0)" @onclick="() => DeplacerAsync(categorie, SensDeplacement.Haut)">↑</button>
+                    <button type="button" class="bouton-icone" title="Descendre" aria-label="Descendre @categorie.Nom"
+                            disabled="@(position == _categories.Count - 1)" @onclick="() => DeplacerAsync(categorie, SensDeplacement.Bas)">↓</button>
+                    <button type="button" class="bouton-secondaire" @onclick="() => CommencerRenommage(categorie)">Renommer</button>
+                </span>
+            }
+        </li>
+    }
+</ol>
+
+<section class="carte-formulaire">
+    <h2>Ajouter une catégorie</h2>
+    <form @onsubmit="AjouterAsync" @onsubmit:preventDefault>
+        <div class="champ">
+            <label for="nouvelle-categorie">Nom</label>
+            <input id="nouvelle-categorie" @bind="_nomAjout" maxlength="@Categorie.LongueurMaxNom" autocomplete="off" />
+            <small class="aide">Elle est ajoutée à la fin du trajet ; déplacez-la ensuite au besoin.</small>
+        </div>
+        <button type="submit" class="bouton-principal">Ajouter</button>
+    </form>
+</section>
+
+@code {
+    private List<Categorie> _categories = [];
+    private string? _erreur;
+    private int? _enRenommage;
+    private string _nouveauNom = string.Empty;
+    private string _nomAjout = string.Empty;
+
+    protected override async Task OnInitializedAsync() => _categories = await DepotCategories.ListerAsync();
+
+    private async Task DeplacerAsync(Categorie categorie, SensDeplacement sens)
+    {
+        _erreur = null;
+        await DepotCategories.DeplacerAsync(categorie.Id, sens);
+        _categories = await DepotCategories.ListerAsync();
+    }
+
+    private void CommencerRenommage(Categorie categorie)
+    {
+        _erreur = null;
+        _enRenommage = categorie.Id;
+        _nouveauNom = categorie.Nom;
+    }
+
+    private void AnnulerRenommage() => _enRenommage = null;
+
+    private async Task RenommerAsync(Categorie categorie)
+    {
+        if (!NomValide(_nouveauNom))
+        {
+            return;
+        }
+
+        try
+        {
+            await DepotCategories.RenommerAsync(categorie.Id, _nouveauNom);
+            _enRenommage = null;
+            _categories = await DepotCategories.ListerAsync();
+        }
+        catch (NomCategorieDejaUtiliseException ex)
+        {
+            _erreur = ex.Message;
+        }
+    }
+
+    private async Task AjouterAsync()
+    {
+        if (!NomValide(_nomAjout))
+        {
+            return;
+        }
+
+        try
+        {
+            await DepotCategories.AjouterAsync(_nomAjout);
+            _nomAjout = string.Empty;
+            _categories = await DepotCategories.ListerAsync();
+        }
+        catch (NomCategorieDejaUtiliseException ex)
+        {
+            _erreur = ex.Message;
+        }
+    }
+
+    private bool NomValide(string nom)
+    {
+        _erreur = null;
+        if (string.IsNullOrWhiteSpace(nom))
+        {
+            _erreur = "Le nom de la catégorie est requis.";
+        }
+        else if (nom.Trim().Length > Categorie.LongueurMaxNom)
+        {
+            _erreur = $"Le nom ne doit pas dépasser {Categorie.LongueurMaxNom} caractères.";
+        }
+
+        return _erreur is null;
+    }
+}

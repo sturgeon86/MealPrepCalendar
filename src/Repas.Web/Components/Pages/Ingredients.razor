@@ -1,0 +1,122 @@
+@page "/ingredients"
+@implements IDisposable
+@using Repas.Domaine.Referentiel
+@using Repas.Donnees
+@inject DepotIngredients DepotIngredients
+@inject DepotCategories DepotCategories
+
+<PageTitle>Ingrédients</PageTitle>
+
+<div class="entete-page">
+    <h1>Ingrédients</h1>
+    <div class="actions-page">
+        <a class="bouton-secondaire" href="categories">Catégories</a>
+        <a class="bouton-principal bouton-compact" href="ingredients/nouveau">Ajouter</a>
+    </div>
+</div>
+
+<div class="filtres">
+    <div class="champ">
+        <label for="recherche">Rechercher</label>
+        <input id="recherche" type="search" placeholder="Nom ou synonyme" autocomplete="off"
+               value="@_texte" @oninput="SurSaisie" />
+    </div>
+    <div class="champ">
+        <label for="categorie">Catégorie</label>
+        <select id="categorie" @bind="CategorieChoisie" @bind:after="ChargerAsync">
+            <option value="0">Toutes</option>
+            @foreach (var categorie in _categories)
+            {
+                <option value="@categorie.Id">@categorie.Nom</option>
+            }
+        </select>
+    </div>
+    <div class="champ-case">
+        <input id="inactifs" type="checkbox" @bind="InclureInactifs" @bind:after="ChargerAsync" />
+        <label for="inactifs">Afficher les désactivés</label>
+    </div>
+</div>
+
+@if (_resultats is null)
+{
+    <p>Chargement…</p>
+}
+else if (_resultats.Count == 0)
+{
+    <p class="aide">Aucun ingrédient ne correspond.</p>
+}
+else
+{
+    <p class="aide" role="status">@_resultats.Count ingrédient(s)</p>
+    <ul class="liste-cartes">
+        @foreach (var ingredient in _resultats)
+        {
+            <li @key="ingredient.Id" class="@(ingredient.Actif ? null : "inactif")">
+                <div class="infos-ligne">
+                    <a class="nom-ligne" href="ingredients/@ingredient.Id">@ingredient.Nom</a>
+                    @if (!ingredient.EstAlimentaire)
+                    {
+                        <span class="pastille">Non alimentaire</span>
+                    }
+                    @if (!ingredient.Actif)
+                    {
+                        <span class="pastille pastille-alerte">Désactivé</span>
+                    }
+                    <span class="details-ligne">@ingredient.Categorie · en @ingredient.UniteReference</span>
+                    @if (ingredient.Synonymes.Length > 0)
+                    {
+                        <span class="details-ligne">Aussi : @ingredient.Synonymes</span>
+                    }
+                </div>
+            </li>
+        }
+    </ul>
+}
+
+@code {
+    private List<Categorie> _categories = [];
+    private List<ResumeIngredient>? _resultats;
+    private string _texte = string.Empty;
+    private CancellationTokenSource? _attente;
+
+    private int CategorieChoisie { get; set; }
+
+    private bool InclureInactifs { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _categories = await DepotCategories.ListerAsync();
+        await ChargerAsync();
+    }
+
+    // La recherche attend une courte pause dans la frappe avant d'interroger la base.
+    private async Task SurSaisie(ChangeEventArgs e)
+    {
+        _texte = e.Value?.ToString() ?? string.Empty;
+        _attente?.Cancel();
+        _attente?.Dispose();
+        _attente = new CancellationTokenSource();
+        var jeton = _attente.Token;
+        try
+        {
+            await Task.Delay(250, jeton);
+            await ChargerAsync();
+        }
+        catch (TaskCanceledException)
+        {
+            // Une autre frappe a suivi : c'est elle qui lancera la recherche.
+        }
+    }
+
+    private async Task ChargerAsync()
+    {
+        _resultats = await DepotIngredients.RechercherAsync(
+            _texte, CategorieChoisie == 0 ? null : CategorieChoisie, InclureInactifs);
+    }
+
+    public void Dispose()
+    {
+        _attente?.Cancel();
+        _attente?.Dispose();
+    }
+}

@@ -1,0 +1,259 @@
+@page "/ingredients/nouveau"
+@page "/ingredients/{Id:int}"
+@using Repas.Domaine.Mesures
+@using Repas.Domaine.Referentiel
+@using Repas.Donnees
+@inject DepotIngredients DepotIngredients
+@inject DepotCategories DepotCategories
+@inject DepotUnites DepotUnites
+@inject NavigationManager Navigation
+
+<PageTitle>@(EstNouveau ? "Nouvel ingrédient" : _modele?.Nom ?? "Ingrédient")</PageTitle>
+
+<p><a href="ingredients">← Ingrédients</a></p>
+
+@if (_introuvable)
+{
+    <h1>Ingrédient introuvable</h1>
+    <p>Cet ingrédient n'existe pas ou plus.</p>
+}
+else if (_modele is null)
+{
+    <p>Chargement…</p>
+}
+else
+{
+    <h1>@(EstNouveau ? "Nouvel ingrédient" : "Modifier l'ingrédient")</h1>
+
+    <section class="carte-formulaire carte-large">
+        <EditForm Model="_modele" OnSubmit="EnregistrerAsync">
+            @if (_erreurs.Count > 0)
+            {
+                <div class="message-erreur" role="alert">
+                    @if (_erreurs.Count == 1)
+                    {
+                        @_erreurs[0]
+                    }
+                    else
+                    {
+                        <ul>
+                            @foreach (var erreur in _erreurs)
+                            {
+                                <li>@erreur</li>
+                            }
+                        </ul>
+                    }
+                </div>
+            }
+
+            <div class="champ">
+                <label for="nom">Nom</label>
+                <InputText id="nom" @bind-Value="_modele.Nom" autocomplete="off" maxlength="@ValidationIngredient.LongueurMaxNom" />
+            </div>
+
+            <div class="grille-2">
+                <div class="champ">
+                    <label for="categorie">Catégorie d'épicerie</label>
+                    <InputSelect id="categorie" @bind-Value="_modele.CategorieId">
+                        <option value="0" disabled>Choisir…</option>
+                        @foreach (var categorie in _categories)
+                        {
+                            <option value="@categorie.Id">@categorie.Nom</option>
+                        }
+                    </InputSelect>
+                </div>
+
+                <div class="champ-case champ-case-aligne">
+                    <InputCheckbox id="alimentaire" @bind-Value="_modele.EstAlimentaire" />
+                    <label for="alimentaire">Article alimentaire</label>
+                </div>
+            </div>
+
+            <div class="grille-2">
+                <div class="champ">
+                    <label for="type-mesure">Type de mesure</label>
+                    <InputSelect id="type-mesure" @bind-Value="_modele.TypeMesure" @bind-Value:after="AjusterUnite"
+                                 aria-describedby="aide-type">
+                        <option value="@TypeMesure.Poids">Poids</option>
+                        <option value="@TypeMesure.Volume">Volume</option>
+                        <option value="@TypeMesure.Unite">À la pièce</option>
+                    </InputSelect>
+                    <small id="aide-type" class="aide">Comment la liste d'épicerie additionne les quantités.</small>
+                </div>
+
+                <div class="champ">
+                    <label for="unite">Unité des totaux</label>
+                    <InputSelect id="unite" @bind-Value="_modele.UniteReferenceId">
+                        @foreach (var unite in _unites.Where(u => u.TypeMesure == _modele.TypeMesure))
+                        {
+                            <option value="@unite.Id">@unite.Code</option>
+                        }
+                    </InputSelect>
+                </div>
+            </div>
+
+            <div class="grille-2">
+                <div class="champ">
+                    <label for="densite">Densité (g/ml), facultative</label>
+                    <InputNumber id="densite" @bind-Value="_modele.DensiteGParMl" step="any" min="0" aria-describedby="aide-densite" />
+                    <small id="aide-densite" class="aide">Pour passer d'un volume à un poids. Ex. : farine 0,5 (1 tasse = 125 g).</small>
+                </div>
+
+                <div class="champ">
+                    <label for="poids-moyen">Poids moyen d'une pièce (g), facultatif</label>
+                    <InputNumber id="poids-moyen" @bind-Value="_modele.PoidsMoyenUniteG" step="any" min="0" aria-describedby="aide-poids" />
+                    <small id="aide-poids" class="aide">Pour passer d'une pièce à un poids. Ex. : 1 oignon ≈ 150 g.</small>
+                </div>
+            </div>
+
+            <div class="champ">
+                <label for="synonymes">Synonymes, un par ligne</label>
+                <InputTextArea id="synonymes" @bind-Value="_modele.Synonymes" rows="3" aria-describedby="aide-synonymes" />
+                <small id="aide-synonymes" class="aide">Autres noms qui mènent à cet ingrédient. Ex. : suprême de poulet.</small>
+            </div>
+
+            @if (!EstNouveau)
+            {
+                <div class="champ-case">
+                    <InputCheckbox id="actif" @bind-Value="_modele.Actif" aria-describedby="aide-actif" />
+                    <label for="actif">Actif</label>
+                </div>
+                <p id="aide-actif" class="aide">Un ingrédient désactivé n'est plus proposé, mais reste dans les recettes existantes.</p>
+            }
+
+            <button type="submit" class="bouton-principal" disabled="@_enCours">Enregistrer</button>
+        </EditForm>
+    </section>
+}
+
+@code {
+    private ModeleFiche? _modele;
+    private List<Categorie> _categories = [];
+    private List<Unite> _unites = [];
+    private List<string> _erreurs = [];
+    private bool _introuvable;
+    private bool _enCours;
+
+    [Parameter]
+    public int? Id { get; set; }
+
+    private bool EstNouveau => Id is null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _categories = await DepotCategories.ListerAsync();
+        _unites = await DepotUnites.ListerAsync();
+
+        if (EstNouveau)
+        {
+            _modele = new ModeleFiche { TypeMesure = TypeMesure.Poids, EstAlimentaire = true, Actif = true };
+            AjusterUnite();
+            return;
+        }
+
+        var fiche = await DepotIngredients.TrouverAsync(Id!.Value);
+        if (fiche is null)
+        {
+            _introuvable = true;
+            return;
+        }
+
+        _modele = ModeleFiche.Depuis(fiche);
+    }
+
+    // Au changement de type de mesure, l'unité des totaux devient l'unité de base de ce type (g, ml ou unité).
+    private void AjusterUnite()
+    {
+        var actuelle = _unites.FirstOrDefault(u => u.Id == _modele!.UniteReferenceId);
+        if (actuelle?.TypeMesure != _modele!.TypeMesure)
+        {
+            var duType = _unites.Where(u => u.TypeMesure == _modele.TypeMesure).ToList();
+            _modele.UniteReferenceId = (duType.FirstOrDefault(u => u.FacteurVersReference == 1) ?? duType.FirstOrDefault())?.Id ?? 0;
+        }
+    }
+
+    private async Task EnregistrerAsync()
+    {
+        var fiche = _modele!.VersFiche(Id ?? 0);
+        _erreurs = ValidationIngredient.Valider(fiche, _unites).ToList();
+        if (_erreurs.Count > 0)
+        {
+            return;
+        }
+
+        _enCours = true;
+        try
+        {
+            if (EstNouveau)
+            {
+                await DepotIngredients.AjouterAsync(fiche);
+            }
+            else if (!await DepotIngredients.ModifierAsync(fiche))
+            {
+                _introuvable = true;
+                return;
+            }
+
+            Navigation.NavigateTo("ingredients");
+        }
+        catch (TexteIngredientDejaUtiliseException ex)
+        {
+            _erreurs = [ex.Message];
+        }
+        finally
+        {
+            _enCours = false;
+        }
+    }
+
+    private sealed class ModeleFiche
+    {
+        public string Nom { get; set; } = string.Empty;
+
+        public int CategorieId { get; set; }
+
+        public TypeMesure TypeMesure { get; set; }
+
+        public int UniteReferenceId { get; set; }
+
+        public decimal? DensiteGParMl { get; set; }
+
+        public decimal? PoidsMoyenUniteG { get; set; }
+
+        public bool EstAlimentaire { get; set; }
+
+        public bool Actif { get; set; }
+
+        /// <summary>Un synonyme par ligne.</summary>
+        public string Synonymes { get; set; } = string.Empty;
+
+        public static ModeleFiche Depuis(FicheIngredient fiche) => new()
+        {
+            Nom = fiche.Nom,
+            CategorieId = fiche.CategorieId,
+            TypeMesure = fiche.TypeMesure,
+            UniteReferenceId = fiche.UniteReferenceId,
+            DensiteGParMl = fiche.DensiteGParMl,
+            PoidsMoyenUniteG = fiche.PoidsMoyenUniteG,
+            EstAlimentaire = fiche.EstAlimentaire,
+            Actif = fiche.Actif,
+            Synonymes = string.Join(Environment.NewLine, fiche.Synonymes),
+        };
+
+        public FicheIngredient VersFiche(int id)
+        {
+            var nom = Nom.Trim();
+            return new FicheIngredient(
+                id,
+                nom,
+                CategorieId,
+                TypeMesure,
+                UniteReferenceId,
+                DensiteGParMl,
+                PoidsMoyenUniteG,
+                EstAlimentaire,
+                Actif,
+                ValidationIngredient.NormaliserSynonymes(Synonymes.Split('\n'), nom));
+        }
+    }
+}

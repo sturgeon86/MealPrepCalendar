@@ -47,7 +47,7 @@ L'app tourne sur Unraid en réseau local seulement (`http://192.168.1.10:8096`, 
   - *Critères :* les données de base s'insèrent une seule fois.
 - [x] **2.3 Logique de conversion** dans `Repas.Domaine` : même type de mesure (facteur), volume ↔ poids (densité), unité ↔ poids (poids moyen), conversion impossible signalée.
   - *Critères :* tests unitaires couvrant chaque cas, y compris les cas limites (densité absente, unité inconnue).
-- [ ] **2.4 Écrans** : liste des ingrédients (recherche par nom et synonyme, filtre par catégorie), création et modification d'une fiche, gestion des catégories (ordre générique).
+- [x] **2.4 Écrans** : liste des ingrédients (recherche par nom et synonyme, filtre par catégorie), création et modification d'une fiche, gestion des catégories (ordre générique).
 - [ ] **2.5 Fusion de doublons** : remplacer un ingrédient par un autre partout (recettes, listes), puis désactiver l'ancien.
   - *Critères :* fait dans une transaction ; aucune donnée perdue.
 

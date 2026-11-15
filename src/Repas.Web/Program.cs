@@ -25,6 +25,9 @@ if (string.IsNullOrWhiteSpace(chaineConnexion))
 var baseDeDonnees = new BaseDeDonnees(chaineConnexion);
 builder.Services.AddSingleton(baseDeDonnees);
 builder.Services.AddSingleton<DepotUtilisateurs>();
+builder.Services.AddSingleton<DepotCategories>();
+builder.Services.AddSingleton<DepotUnites>();
+builder.Services.AddSingleton<DepotIngredients>();
 builder.Services.AddSingleton<IHacheurMotDePasse, HacheurMotDePasse>();
 builder.Services.AddSingleton<ServiceConnexion>();
 builder.Services.AddSingleton<ServicePremierCompte>();
