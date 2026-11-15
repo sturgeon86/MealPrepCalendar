@@ -9,6 +9,7 @@ COPY src/Repas.Web/Repas.Web.csproj src/Repas.Web/
 RUN dotnet restore src/Repas.Web/Repas.Web.csproj
 
 COPY src/ src/
+COPY db/ db/
 RUN dotnet publish src/Repas.Web/Repas.Web.csproj -c Release -o /app/publish --no-restore
 
 # Étape 2 : image d'exécution

@@ -1,4 +1,5 @@
 using Repas.Donnees;
+using Repas.Donnees.Migrations;
 using Repas.Web.Components;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -12,22 +13,37 @@ if (string.IsNullOrWhiteSpace(chaineConnexion))
         "appsettings.Development.json et la compléter.");
 }
 
-builder.Services.AddSingleton(new BaseDeDonnees(chaineConnexion));
+var baseDeDonnees = new BaseDeDonnees(chaineConnexion);
+builder.Services.AddSingleton(baseDeDonnees);
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
 var app = builder.Build();
 
-// Crée la base au premier démarrage. Un échec est journalisé sans arrêter l'app pour l'instant ;
-// l'exécuteur de migrations (story 0.3) rendra cet échec bloquant.
+// Prépare la base avant d'accepter des requêtes : création au besoin, puis migrations.
+// Un échec arrête le démarrage, pour ne jamais servir l'app sur un schéma incomplet.
 try
 {
-    await app.Services.GetRequiredService<BaseDeDonnees>().AssurerExistenceAsync();
+    await baseDeDonnees.AssurerExistenceAsync();
+
+    var dossierMigrations = Path.Combine(AppContext.BaseDirectory, "db", "migrations");
+    var appliquees = await new ExecuteurMigrations(chaineConnexion, dossierMigrations).AppliquerAsync();
+
+    if (appliquees.Count == 0)
+    {
+        app.Logger.LogInformation("Base de données à jour : aucune migration à appliquer.");
+    }
+    else
+    {
+        app.Logger.LogInformation(
+            "{Nombre} migration(s) appliquée(s) : {Scripts}", appliquees.Count, string.Join(", ", appliquees));
+    }
 }
 catch (Exception ex)
 {
-    app.Logger.LogError(ex, "Impossible de joindre le serveur SQL ou de créer la base de données.");
+    app.Logger.LogCritical(ex, "Démarrage interrompu, la base de données n'a pas pu être préparée : {Message}", ex.Message);
+    return 1;
 }
 
 if (!app.Environment.IsDevelopment())
@@ -46,3 +62,4 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 app.Run();
+return 0;

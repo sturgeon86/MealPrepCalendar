@@ -70,7 +70,7 @@ Le référentiel d'ingrédients est la fondation : aucune recette ni aucun artic
 
 ## Commandes
 - Build : `dotnet build`
-- Tests : `dotnet test`
+- Tests : `dotnet test` (les tests d'intégration exigent le SQL Server local : `docker compose up -d sql`, et `src/Repas.Web/appsettings.Development.json` ou la variable `REPAS_TESTS_CONNEXION`)
 - Lancer en local : `docker compose up` (SQL Server + app), ou `dotnet run --project src/Repas.Web`
 
 ## À faire avant de dire qu'une story est terminée

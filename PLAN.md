@@ -12,7 +12,7 @@ Référence : `docs/PROJET-REPAS.md` (spécification) et `CLAUDE.md` (règles).
   - *Critères :* `dotnet build` et `dotnet test` passent ; une page Blazor « Bonjour » s'affiche.
 - [x] **0.2 Docker local** : `Dockerfile` multi-étapes et `docker-compose.yml` (app + SQL Server 2017).
   - *Critères :* `docker compose up` démarre l'app, qui se connecte à la base.
-- [ ] **0.3 Exécuteur de migrations** : table `VersionSchema`, lecture des scripts de `db/migrations/` en ordre, exécution au démarrage dans une transaction par script.
+- [x] **0.3 Exécuteur de migrations** : table `VersionSchema`, lecture des scripts de `db/migrations/` en ordre, exécution au démarrage dans une transaction par script.
   - *Critères :* un script déjà appliqué n'est jamais réexécuté ; un échec arrête le démarrage avec un message clair ; tests d'intégration.
 - [ ] **0.4 Couche d'accès aux données** : classe de base pour ouvrir les connexions, exécuter des requêtes paramétrées et gérer les transactions.
   - *Critères :* aucun ORM ; un test d'intégration lit et écrit une ligne.
