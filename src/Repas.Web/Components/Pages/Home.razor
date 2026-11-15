@@ -1,7 +1,41 @@
 ﻿@page "/"
+@using Repas.Donnees
+@inject BaseDeDonnees Base
+@inject ILogger<Home> Journal
 
 <PageTitle>Planificateur de repas</PageTitle>
 
 <h1>Bonjour !</h1>
 
 <p>Le planificateur de repas est en construction.</p>
+
+@if (_versionServeur is not null)
+{
+    <p>Base de données : connectée (SQL Server @_versionServeur).</p>
+}
+else if (_erreur)
+{
+    <p>Base de données : connexion impossible. Voir le journal de l'application.</p>
+}
+else
+{
+    <p>Base de données : vérification en cours…</p>
+}
+
+@code {
+    private string? _versionServeur;
+    private bool _erreur;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _versionServeur = await Base.ObtenirVersionServeurAsync();
+        }
+        catch (Exception ex)
+        {
+            _erreur = true;
+            Journal.LogError(ex, "La connexion à la base de données a échoué.");
+        }
+    }
+}

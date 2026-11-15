@@ -1,0 +1,11 @@
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "ConnectionStrings": {
+    "Repas": "Server=localhost,14330;Database=Repas;User Id=sa;Password=<MSSQL_SA_PASSWORD du fichier .env>;TrustServerCertificate=True"
+  }
+}

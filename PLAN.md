@@ -10,7 +10,7 @@ Référence : `docs/PROJET-REPAS.md` (spécification) et `CLAUDE.md` (règles).
 ## Itération 0 — Fondations
 - [x] **0.1 Solution .NET** : créer la solution et les projets (`Repas.Domaine`, `Repas.Donnees`, `Repas.Web`, projets de tests) selon la structure de `CLAUDE.md`.
   - *Critères :* `dotnet build` et `dotnet test` passent ; une page Blazor « Bonjour » s'affiche.
-- [ ] **0.2 Docker local** : `Dockerfile` multi-étapes et `docker-compose.yml` (app + SQL Server 2017).
+- [x] **0.2 Docker local** : `Dockerfile` multi-étapes et `docker-compose.yml` (app + SQL Server 2017).
   - *Critères :* `docker compose up` démarre l'app, qui se connecte à la base.
 - [ ] **0.3 Exécuteur de migrations** : table `VersionSchema`, lecture des scripts de `db/migrations/` en ordre, exécution au démarrage dans une transaction par script.
   - *Critères :* un script déjà appliqué n'est jamais réexécuté ; un échec arrête le démarrage avec un message clair ; tests d'intégration.

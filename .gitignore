@@ -480,3 +480,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Configuration locale (contient la chaîne de connexion)
+appsettings.Development.json
