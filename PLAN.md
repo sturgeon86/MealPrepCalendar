@@ -45,7 +45,7 @@ L'app tourne sur Unraid en réseau local seulement (`http://192.168.1.10:8096`, 
 - [x] **2.1 Tables** `Categorie`, `Unite`, `Ingredient`, `IngredientSynonyme` (migration).
 - [x] **2.2 Données de base** (`db/seed/`) : catégories avec ordre générique (Fruits et légumes, Boulangerie, Viandes, Poissons, Produits laitiers, Épicerie sèche, Conserves, Surgelés, Épices et condiments, Boissons, Entretien ménager, Hygiène…), unités courantes avec facteurs (g, kg, ml, l, tasse, c. à soupe, c. à thé, lb, oz, unité…), une centaine d'ingrédients courants.
   - *Critères :* les données de base s'insèrent une seule fois.
-- [ ] **2.3 Logique de conversion** dans `Repas.Domaine` : même type de mesure (facteur), volume ↔ poids (densité), unité ↔ poids (poids moyen), conversion impossible signalée.
+- [x] **2.3 Logique de conversion** dans `Repas.Domaine` : même type de mesure (facteur), volume ↔ poids (densité), unité ↔ poids (poids moyen), conversion impossible signalée.
   - *Critères :* tests unitaires couvrant chaque cas, y compris les cas limites (densité absente, unité inconnue).
 - [ ] **2.4 Écrans** : liste des ingrédients (recherche par nom et synonyme, filtre par catégorie), création et modification d'une fiche, gestion des catégories (ordre générique).
 - [ ] **2.5 Fusion de doublons** : remplacer un ingrédient par un autre partout (recettes, listes), puis désactiver l'ancien.
