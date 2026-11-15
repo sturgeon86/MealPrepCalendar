@@ -34,7 +34,12 @@ Référence : `docs/PROJET-REPAS.md` (spécification) et `CLAUDE.md` (règles).
   - *Volumes :* `/data/keys` (clés de session) et `/data/photos` (utilisé à partir de la story 3.3).
 - [x] **7.2 Déploiement Unraid** : modèle de conteneur, connexion au SQL Server existant, création de la base dédiée.
   - *Critères :* la mise à jour du conteneur vers une nouvelle version de l'image est documentée et se fait en une étape.
+
+L'app tourne sur Unraid en réseau local seulement (`http://192.168.1.10:8096`, avec `Auth__AllowInsecureHttp=true`). L'exposition sous le domaine est reportée : les stories ci-dessous se font quand on décide d'ouvrir l'app sur Internet.
+- [ ] **1.5 Limite des tentatives de connexion** : limiteur de débit d'ASP.NET Core sur la page de connexion (ex. : 5 essais par minute par adresse IP), avec un message clair quand la limite est atteinte.
+  - *Critères :* fait avant la story 7.3 ; l'adresse du client vient de l'en-tête `X-Forwarded-For` transmis par le proxy.
 - [ ] **7.3 Nginx Proxy Manager** : sous-domaine, certificat HTTPS, prise en charge des WebSockets (nécessaire pour Blazor Server).
+  - *Critères :* `Auth__AllowInsecureHttp` retiré du conteneur Unraid ; délais de 1 h sur le proxy pour éviter les reconnexions.
 
 ## Itération 2 — Référentiel d'ingrédients
 - [ ] **2.1 Tables** `Categorie`, `Unite`, `Ingredient`, `IngredientSynonyme` (migration).
