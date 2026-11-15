@@ -32,7 +32,7 @@ Référence : `docs/PROJET-REPAS.md` (spécification) et `CLAUDE.md` (règles).
 - [x] **7.1 Image Docker de production** : variables d'environnement, volume pour les photos, volume pour les clés de protection des données ASP.NET (sinon les sessions sont perdues à chaque redémarrage).
   - *Décidé :* même fonctionnement que WebBudgetCalendar. Chaque push sur `main` exécute les tests puis publie `ghcr.io/sturgeon86/mealprepcalendar` (étiquettes `latest` et `sha-<commit>`) par `.github/workflows/docker.yml`.
   - *Volumes :* `/data/keys` (clés de session) et `/data/photos` (utilisé à partir de la story 3.3).
-- [ ] **7.2 Déploiement Unraid** : modèle de conteneur, connexion au SQL Server existant, création de la base dédiée.
+- [x] **7.2 Déploiement Unraid** : modèle de conteneur, connexion au SQL Server existant, création de la base dédiée.
   - *Critères :* la mise à jour du conteneur vers une nouvelle version de l'image est documentée et se fait en une étape.
 - [ ] **7.3 Nginx Proxy Manager** : sous-domaine, certificat HTTPS, prise en charge des WebSockets (nécessaire pour Blazor Server).
 
