@@ -680,3 +680,121 @@ a.bouton-secondaire {
     object-fit: cover;
     background: #e4e7eb;
 }
+
+/* --- Consultation d'une recette --- */
+.consultation {
+    max-width: 60rem;
+}
+
+.photo-consultation {
+    display: block;
+    width: 100%;
+    max-height: 22rem;
+    margin-bottom: 1rem;
+    border-radius: 0.5rem;
+    object-fit: cover;
+    background: #e4e7eb;
+}
+
+.consultation h1 {
+    margin: 0;
+}
+
+.temps-recette {
+    margin: 0.25rem 0 0.75rem;
+    color: #52606d;
+}
+
+.etiquettes-lecture li {
+    padding: 0.25rem 0.75rem;
+    font-size: 0.875rem;
+}
+
+.colonnes-recette {
+    display: grid;
+    gap: 1rem;
+}
+
+@media (min-width: 48rem) {
+    .colonnes-recette {
+        grid-template-columns: minmax(16rem, 2fr) 3fr;
+        align-items: start;
+    }
+}
+
+.carte-lecture {
+    margin-bottom: 1rem;
+    padding: 1rem 1.25rem;
+    border-radius: 0.5rem;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.carte-lecture h2 {
+    margin: 0 0 0.75rem;
+    font-size: 1.25rem;
+}
+
+.selecteur-portions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.valeur-portions {
+    min-width: 6.5rem;
+    text-align: center;
+}
+
+.bouton-lien-texte {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #1f6f4a;
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.ingredients-lecture {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.ingredients-lecture li {
+    display: grid;
+    grid-template-columns: 6.5rem 1fr;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+    border-top: 1px solid #e4e7eb;
+    font-size: 1.0625rem;
+}
+
+.ingredients-lecture li:first-child {
+    border-top: 0;
+}
+
+.quantite-lecture {
+    font-weight: 600;
+    text-align: right;
+}
+
+.etapes-lecture {
+    margin: 0;
+    padding-left: 1.5rem;
+    font-size: 1.0625rem;
+}
+
+.etapes-lecture li {
+    margin-bottom: 0.875rem;
+    padding-left: 0.25rem;
+    white-space: pre-line;
+}
+
+.notes-lecture {
+    margin: 0;
+    white-space: pre-line;
+}

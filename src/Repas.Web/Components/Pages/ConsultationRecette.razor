@@ -1,0 +1,195 @@
+@page "/recettes/{Id:int}"
+@using Repas.Domaine.Recettes
+@using Repas.Donnees
+@inject DepotRecettes DepotRecettes
+@inject DepotUnites DepotUnites
+
+<PageTitle>@(_recette?.Nom ?? "Recette")</PageTitle>
+
+<p><a href="recettes">← Recettes</a></p>
+
+@if (_introuvable)
+{
+    <h1>Recette introuvable</h1>
+    <p>Cette recette n'existe pas ou plus.</p>
+}
+else if (_recette is null)
+{
+    <p>Chargement…</p>
+}
+else
+{
+    <article class="consultation">
+        @if (_recette.PhotoChemin is not null)
+        {
+            <img class="photo-consultation" src="photos/@_recette.PhotoChemin" alt="Photo de la recette @_recette.Nom" />
+        }
+
+        <div class="entete-page">
+            <h1>@_recette.Nom</h1>
+            <div class="actions-page">
+                <a class="bouton-secondaire" href="recettes/@_recette.Id/modifier">Modifier</a>
+            </div>
+        </div>
+
+        @if (Temps.Count > 0)
+        {
+            <p class="temps-recette">@string.Join(" · ", Temps)</p>
+        }
+
+        @if (_recette.Etiquettes.Count > 0)
+        {
+            <ul class="etiquettes etiquettes-lecture" aria-label="Étiquettes">
+                @foreach (var etiquette in _recette.Etiquettes)
+                {
+                    <li>@etiquette</li>
+                }
+            </ul>
+        }
+
+        <div class="colonnes-recette">
+            <section class="carte-lecture">
+                <h2>Ingrédients</h2>
+
+                <div class="selecteur-portions" role="group" aria-label="Nombre de portions">
+                    <button type="button" class="bouton-icone" aria-label="Une portion de moins"
+                            disabled="@(_portions <= 1)" @onclick="() => ChangerPortions(_portions - 1)">−</button>
+                    <span class="valeur-portions"><strong>@_portions</strong> portion@(_portions > 1 ? "s" : "")</span>
+                    <button type="button" class="bouton-icone" aria-label="Une portion de plus"
+                            disabled="@(_portions >= ValidationRecette.PortionsMax)" @onclick="() => ChangerPortions(_portions + 1)">+</button>
+                    @if (_portions != _recette.Portions)
+                    {
+                        <button type="button" class="bouton-lien-texte" @onclick="() => ChangerPortions(_recette.Portions)">
+                            Revenir à @_recette.Portions
+                        </button>
+                    }
+                </div>
+
+                @if (_recette.Ingredients.Count == 0)
+                {
+                    <p class="aide">Aucun ingrédient.</p>
+                }
+                else
+                {
+                    @* Annoncé aux lecteurs d'écran quand les portions changent. *@
+                    <ul class="ingredients-lecture" aria-live="polite">
+                        @foreach (var ligne in _recette.Ingredients)
+                        {
+                            <li>
+                                <span class="quantite-lecture">@QuantiteAffichee(ligne)</span>
+                                <span>
+                                    @ligne.NomIngredient@(string.IsNullOrWhiteSpace(ligne.Precision) ? "" : $", {ligne.Precision}")
+                                    @if (ligne.EstOptionnel)
+                                    {
+                                        <span class="details-ligne"> (facultatif)</span>
+                                    }
+                                </span>
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
+
+            <section class="carte-lecture">
+                <h2>Étapes</h2>
+                @if (_recette.Etapes.Count == 0)
+                {
+                    <p class="aide">Aucune étape.</p>
+                }
+                else
+                {
+                    <ol class="etapes-lecture">
+                        @foreach (var etape in _recette.Etapes)
+                        {
+                            <li>@etape</li>
+                        }
+                    </ol>
+                }
+            </section>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_recette.Notes))
+        {
+            <section class="carte-lecture">
+                <h2>Notes</h2>
+                <p class="notes-lecture">@_recette.Notes</p>
+            </section>
+        }
+    </article>
+}
+
+@code {
+    private FicheRecette? _recette;
+    private bool _introuvable;
+    private int _portions;
+    private Dictionary<int, string> _codesUnites = [];
+
+    [Parameter]
+    public int Id { get; set; }
+
+    /// <summary>Nombre de portions à afficher au départ, par exemple depuis le calendrier : <c>?portions=6</c>.</summary>
+    [SupplyParameterFromQuery(Name = "portions")]
+    public int? PortionsDemandees { get; set; }
+
+    private List<string> Temps
+    {
+        get
+        {
+            var temps = new List<string>();
+            if (_recette?.TempsPreparationMin is { } preparation)
+            {
+                temps.Add($"Préparation {Duree(preparation)}");
+            }
+
+            if (_recette?.TempsCuissonMin is { } cuisson)
+            {
+                temps.Add($"Cuisson {Duree(cuisson)}");
+            }
+
+            if (_recette is { TempsPreparationMin: { } p, TempsCuissonMin: { } c } && p > 0 && c > 0)
+            {
+                temps.Add($"Total {Duree(p + c)}");
+            }
+
+            return temps;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _codesUnites = (await DepotUnites.ListerAsync()).ToDictionary(u => u.Id, u => u.Code);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _recette = await DepotRecettes.TrouverAsync(Id);
+        _introuvable = _recette is null;
+        if (_recette is not null)
+        {
+            _portions = PortionsDemandees is >= 1 and <= ValidationRecette.PortionsMax
+                ? PortionsDemandees.Value
+                : _recette.Portions;
+        }
+    }
+
+    private void ChangerPortions(int portions) => _portions = Math.Clamp(portions, 1, ValidationRecette.PortionsMax);
+
+    private string QuantiteAffichee(LigneIngredient ligne)
+    {
+        var quantite = AffichageQuantite.MettreALEchelle(ligne.Quantite, _recette!.Portions, _portions);
+        if (quantite is null || ligne.UniteId is null || !_codesUnites.TryGetValue(ligne.UniteId.Value, out var code))
+        {
+            return "Au goût";
+        }
+
+        return AffichageQuantite.Formater(quantite.Value, code);
+    }
+
+    // Espaces insécables : « 1 h 25 » ne se coupe jamais en fin de ligne.
+    private static string Duree(int minutes) => minutes switch
+    {
+        < 60 => $"{minutes} min",
+        _ when minutes % 60 == 0 => $"{minutes / 60} h",
+        _ => $"{minutes / 60} h {minutes % 60:00}",
+    };
+}

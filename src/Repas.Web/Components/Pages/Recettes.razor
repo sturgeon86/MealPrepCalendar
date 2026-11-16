@@ -35,7 +35,7 @@ else
                     <span class="vignette-recette vignette-vide" aria-hidden="true"></span>
                 }
                 <div class="infos-ligne">
-                    <a class="nom-ligne" href="recettes/@recette.Id/modifier">@recette.Nom</a>
+                    <a class="nom-ligne" href="recettes/@recette.Id">@recette.Nom</a>
                     <span class="details-ligne">
                         @recette.Portions portion(s)@(recette.TempsTotalMin is { } temps ? $" · {temps} min" : "")
                     </span>

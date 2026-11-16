@@ -16,7 +16,7 @@
 
 <PageTitle>@(EstNouvelle ? "Nouvelle recette" : _nom.Length > 0 ? _nom : "Recette")</PageTitle>
 
-<p><a href="recettes">← Recettes</a></p>
+<p><a href="@(EstNouvelle ? "recettes" : $"recettes/{Id}")">@(EstNouvelle ? "← Recettes" : "← Retour à la recette")</a></p>
 
 @if (_introuvable)
 {
@@ -533,7 +533,7 @@ else
             {
                 var auteur = (await EtatAuthentification).User.ObtenirIdUtilisateur()
                     ?? throw new InvalidOperationException("Aucun utilisateur connecté.");
-                await DepotRecettes.AjouterAsync(recette, auteur);
+                recette = recette with { Id = await DepotRecettes.AjouterAsync(recette, auteur) };
             }
             else
             {
@@ -552,7 +552,7 @@ else
                 }
             }
 
-            Navigation.NavigateTo("recettes");
+            Navigation.NavigateTo($"recettes/{recette.Id}");
         }
         catch (PhotoInvalideException ex)
         {

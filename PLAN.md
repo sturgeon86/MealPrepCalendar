@@ -56,7 +56,7 @@ L'app tourne sur Unraid en réseau local seulement (`http://192.168.1.10:8096`, 
 - [x] **3.2 Saisie d'une recette** : nom, portions, temps, notes, ingrédients (recherche dans le référentiel avec synonymes, quantité, unité, précision, optionnel), étapes ordonnées, étiquettes.
   - *Critères :* un ingrédient absent peut être créé sans quitter la recette ; ordre des ingrédients et des étapes modifiable.
 - [x] **3.3 Photo de la recette** : téléversement et affichage (stockage sur un volume Docker).
-- [ ] **3.4 Consultation** : fiche lisible sur cellulaire, avec un sélecteur de portions qui recalcule les quantités.
+- [x] **3.4 Consultation** : fiche lisible sur cellulaire, avec un sélecteur de portions qui recalcule les quantités.
 - [ ] **3.5 Liste et recherche** : par nom, étiquette, ingrédient, temps total.
 
 ## Itération 4 — Calendrier de repas
