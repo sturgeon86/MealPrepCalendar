@@ -15,6 +15,10 @@ COPY src/ src/
 COPY db/ db/
 RUN dotnet publish src/Repas.Web/Repas.Web.csproj -c Release -o /app --no-restore -p:UseAppHost=false
 
+# Garde-fou : sans le script de Blazor, l'app s'affiche mais aucune page n'est interactive.
+RUN test -f /app/wwwroot/_framework/blazor.web.js \
+    || (echo "ERREUR : _framework/blazor.web.js absent de la publication (voir RequiresAspNetWebAssets dans Repas.Web.csproj)." && exit 1)
+
 # Étape 2 : image d'exécution
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app

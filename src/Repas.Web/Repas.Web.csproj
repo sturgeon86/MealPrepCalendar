@@ -16,6 +16,10 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+    <!-- Le script de Blazor (_framework/blazor.web.js) vient d'un paquet que le SDK n'ajoute que s'il voit des
+         fichiers .razor. Le Dockerfile restaure les paquets avec les seuls .csproj (pour le cache) : sans cette
+         ligne, l'image publiée n'a pas le script et aucune page n'est interactive. -->
+    <RequiresAspNetWebAssets>true</RequiresAspNetWebAssets>
   </PropertyGroup>
 
 </Project>
