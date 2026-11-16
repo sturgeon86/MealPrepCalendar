@@ -1,0 +1,147 @@
+@page "/magasin"
+@using Repas.Domaine.Epicerie
+@using Repas.Domaine.Mesures
+@using Repas.Donnees
+@using Repas.Web.Authentification
+@inject DepotListeEpicerie DepotListe
+@inject DepotUnites DepotUnites
+
+<PageTitle>Magasin</PageTitle>
+
+<div class="entete-magasin">
+    <a href="epicerie" class="retour-magasin">← Liste</a>
+    @if (_articles.Count > 0)
+    {
+        var coches = _articles.Count(a => a.EstCoche);
+        <p class="progression-magasin" aria-live="polite">
+            <strong>@(_articles.Count - coches)</strong> à prendre · @coches / @_articles.Count dans le panier
+        </p>
+        <progress class="barre-magasin" max="@_articles.Count" value="@coches" aria-hidden="true"></progress>
+    }
+</div>
+
+@if (_message is not null)
+{
+    <p class="message-erreur" role="alert">@_message</p>
+}
+
+@if (!_charge)
+{
+    <p>Chargement…</p>
+}
+else if (_articles.Count == 0)
+{
+    <p class="aide">La liste d'épicerie est vide. <a href="epicerie">Générez-la ou ajoutez des articles</a>.</p>
+}
+else
+{
+    @if (_articles.All(a => a.EstCoche))
+    {
+        <p class="message-succes" role="status">Tout est dans le panier ! Bon retour à la maison.</p>
+    }
+
+    @foreach (var groupe in AffichageListe.GrouperParCategorie(_articles))
+    {
+        var restants = groupe.Articles.Count(a => !a.EstCoche);
+        var replie = EstReplie(groupe.Categorie, restants);
+        var idRayon = $"rayon-{groupe.Ordre}-{groupe.Articles[0].Id}";
+        <section class="rayon @(restants == 0 ? "rayon-termine" : null)">
+            <h2 class="titre-rayon">
+                <button type="button" class="entete-rayon" aria-expanded="@(replie ? "false" : "true")" aria-controls="@idRayon"
+                        @onclick="() => Basculer(groupe.Categorie, replie)">
+                    <span class="nom-rayon">@groupe.Categorie</span>
+                    @* Ce qui reste à prendre dans ce rayon ; ✓ quand tout est dans le panier. *@
+                    <span class="compte-rayon" aria-label="@(restants == 0 ? "terminé" : $"{restants} à prendre")">@(restants == 0 ? "✓" : restants)</span>
+                    <span class="chevron" aria-hidden="true">@(replie ? "▸" : "▾")</span>
+                </button>
+            </h2>
+            @if (!replie)
+            {
+                <ul id="@idRayon" class="articles-magasin">
+                    @foreach (var article in AffichageListe.OrdonnerPourMagasin(groupe.Articles))
+                    {
+                        <li @key="article.Id" class="@(article.EstCoche ? "dans-panier" : null)">
+                            <label class="ligne-magasin">
+                                <input type="checkbox" class="case-magasin" checked="@article.EstCoche"
+                                       @onchange="() => BasculerAsync(article)" />
+                                <span class="texte-magasin">
+                                    <span class="nom-magasin">
+                                        @article.NomIngredient
+                                        @if (article.EstReporte)
+                                        {
+                                            <span class="pastille">Reporté</span>
+                                        }
+                                        @if (AlertesListe.Verifier(article, _convertisseur) != RaisonEchecConversion.Aucune)
+                                        {
+                                            <span class="alerte-magasin" title="Quantité à part : la fiche de l'ingrédient est incomplète">⚠</span>
+                                        }
+                                    </span>
+                                    <span class="quantite-magasin">@AffichageListe.Quantite(article, _unitesParId)</span>
+                                </span>
+                            </label>
+                        </li>
+                    }
+                </ul>
+            }
+        </section>
+    }
+}
+
+@code {
+    private bool _charge;
+    private List<ArticleListe> _articles = [];
+    private ConvertisseurUnites _convertisseur = new([]);
+    private Dictionary<int, Unite> _unitesParId = [];
+    private string? _message;
+
+    // Rayons ouverts ou fermés à la main ; sinon, un rayon terminé se replie de lui-même.
+    private readonly Dictionary<string, bool> _replisChoisis = [];
+
+    [CascadingParameter]
+    private Task<AuthenticationState> EtatAuthentification { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var unites = await DepotUnites.ListerAsync();
+        _convertisseur = new ConvertisseurUnites(unites);
+        _unitesParId = unites.ToDictionary(u => u.Id);
+        await ChargerAsync();
+    }
+
+    private async Task ChargerAsync()
+    {
+        _articles = (await DepotListe.TrouverActiveAsync())?.Articles.ToList() ?? [];
+        _charge = true;
+    }
+
+    private bool EstReplie(string categorie, int restants) =>
+        _replisChoisis.TryGetValue(categorie, out var choisi) ? choisi : restants == 0;
+
+    private void Basculer(string categorie, bool replie) => _replisChoisis[categorie] = !replie;
+
+    private async Task BasculerAsync(ArticleListe article)
+    {
+        _message = null;
+        var coche = !article.EstCoche;
+
+        // L'écran répond tout de suite ; la base suit. En cas d'échec, on relit la liste.
+        Remplacer(article with { EstCoche = coche });
+
+        var utilisateur = (await EtatAuthentification).User.ObtenirIdUtilisateur()
+            ?? throw new InvalidOperationException("Aucun utilisateur connecté.");
+        if (!await DepotListe.CocherAsync(article.Id, coche, utilisateur))
+        {
+            _message = $"« {article.NomIngredient} » n'est plus sur la liste active ; la liste a été relue.";
+            await ChargerAsync();
+        }
+    }
+
+    private void Remplacer(ArticleListe article)
+    {
+        var position = _articles.FindIndex(a => a.Id == article.Id);
+        if (position >= 0)
+        {
+            _articles[position] = article;
+        }
+    }
+}

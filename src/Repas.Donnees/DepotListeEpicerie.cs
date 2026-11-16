@@ -256,6 +256,33 @@ public sealed class DepotListeEpicerie : DepotBase
         return await ExecuterAsync(session, sql, p => p.Ajouter("@id", SqlDbType.Int, articleId), annulation) > 0;
     }
 
+    /// <summary>
+    /// Coche (dans le panier) ou décoche un article de la liste active. Cocher garde qui l'a fait et quand (UTC) ;
+    /// décocher efface les deux. Cocher un article déjà coché ne change ni l'auteur ni le moment.
+    /// </summary>
+    /// <returns><c>false</c> si l'article n'existe plus ou n'est pas sur la liste active.</returns>
+    public async Task<bool> CocherAsync(
+        int articleId, bool coche, int utilisateurId, SessionSql? session = null, CancellationToken annulation = default)
+    {
+        const string sql = """
+            UPDATE a
+            SET CocheePar = CASE WHEN @coche = 0 THEN NULL WHEN a.EstCoche = 1 THEN a.CocheePar ELSE @utilisateurId END,
+                DateCoche = CASE WHEN @coche = 0 THEN NULL WHEN a.EstCoche = 1 THEN a.DateCoche ELSE SYSUTCDATETIME() END,
+                EstCoche = @coche
+            FROM dbo.ListeEpicerieArticle a
+            JOIN dbo.ListeEpicerie l ON l.Id = a.ListeId AND l.Statut = 'Active'
+            WHERE a.Id = @id;
+            """;
+        return await ExecuterAsync(
+            session,
+            sql,
+            p => p
+                .Ajouter("@id", SqlDbType.Int, articleId)
+                .Ajouter("@coche", SqlDbType.Bit, coche)
+                .Ajouter("@utilisateurId", SqlDbType.Int, utilisateurId),
+            annulation) > 0;
+    }
+
     /// <summary>Nom d'une liste créée avant d'être générée (pour un ajout manuel ou des articles reportés).</summary>
     public const string NomProchaineListe = "Prochaine liste d'épicerie";
 

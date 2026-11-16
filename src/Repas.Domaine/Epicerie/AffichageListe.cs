@@ -35,6 +35,18 @@ public static class AffichageListe
     }
 
     /// <summary>
+    /// L'ordre en magasin dans une catégorie : ce qui reste à prendre d'abord, puis ce qui est déjà dans le panier,
+    /// chacun dans l'ordre reçu. Le pouce trouve toujours le prochain article en haut.
+    /// </summary>
+    public static IReadOnlyList<ArticleListe> OrdonnerPourMagasin(IEnumerable<ArticleListe> articles)
+    {
+        ArgumentNullException.ThrowIfNull(articles);
+
+        // OrderBy est stable : l'ordre d'origine est gardé dans chaque moitié.
+        return articles.OrderBy(a => a.EstCoche).ToList();
+    }
+
+    /// <summary>
     /// La quantité dans une unité plus lisible, quand il y en a une : 1500 ml → 1,5 l, 1250 g → 1,25 kg,
     /// 24 unités → 2 douzaines. Seules les unités de base (g, ml, unité) changent ; les autres (tasse, lb…)
     /// restent comme elles ont été choisies.

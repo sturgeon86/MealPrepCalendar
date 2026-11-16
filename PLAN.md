@@ -79,7 +79,7 @@ L'app tourne sur Unraid en réseau local seulement (`http://192.168.1.10:8096`, 
 - [x] **5.6 Affichage par catégorie**, selon l'ordre générique, avec unités lisibles (1500 ml → 1,5 l) et alertes de conversion.
 
 ## Itération 6 — Mode magasin
-- [ ] **6.1 Écran magasin** pour cellulaire : grandes cases à cocher, articles cochés grisés ou déplacés en bas, catégories repliables.
+- [x] **6.1 Écran magasin** pour cellulaire : grandes cases à cocher, articles cochés grisés ou déplacés en bas, catégories repliables.
 - [ ] **6.2 Temps réel** : un article coché sur un téléphone apparaît coché sur les autres (SignalR / Blazor Server).
 - [ ] **6.3 Terminer la liste** : affiche les articles non cochés, permet de les reporter (tous ou un par un) sur la prochaine liste.
   - *Critères :* les articles reportés portent la mention *(reporté)* et ne disparaissent pas à la regénération.

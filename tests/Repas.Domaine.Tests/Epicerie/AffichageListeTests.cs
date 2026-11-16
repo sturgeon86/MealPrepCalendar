@@ -100,3 +100,24 @@ public sealed class AffichageListeTests
         Assert.Empty(AffichageListe.GrouperParCategorie([]));
     }
 }
+
+public sealed class OrdreMagasinTests
+{
+    private static ArticleListe Article(int id, bool coche) =>
+        new(id, 100 + id, $"Article {id}", "Divers", 10, null, null, null, 1, false, false, coche, new MesuresIngredient(1));
+
+    [Fact]
+    public void LesArticlesCochesPassentEnBas_DansLeurOrdre()
+    {
+        var ordre = AffichageListe.OrdonnerPourMagasin(
+            [Article(1, true), Article(2, false), Article(3, true), Article(4, false)]);
+
+        Assert.Equal([2, 4, 1, 3], ordre.Select(a => a.Id));
+    }
+
+    [Fact]
+    public void SansArticleCoche_LOrdreNeChangePas()
+    {
+        Assert.Equal([3, 1, 2], AffichageListe.OrdonnerPourMagasin([Article(3, false), Article(1, false), Article(2, false)]).Select(a => a.Id));
+    }
+}

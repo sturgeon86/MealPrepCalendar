@@ -24,9 +24,9 @@
     }
 
     <div class="choix-mode" role="radiogroup" aria-label="Type de repas">
-        <button type="button" role="radio" aria-checked="@(!_estLibre)" class="@(!_estLibre ? "actif" : null)"
+        <button type="button" role="radio" aria-checked="@(_estLibre ? "false" : "true")" class="@(!_estLibre ? "actif" : null)"
                 @onclick="() => ChangerMode(libre: false)">Une recette</button>
-        <button type="button" role="radio" aria-checked="@_estLibre" class="@(_estLibre ? "actif" : null)"
+        <button type="button" role="radio" aria-checked="@(_estLibre ? "true" : "false")" class="@(_estLibre ? "actif" : null)"
                 @onclick="() => ChangerMode(libre: true)">Repas libre</button>
     </div>
 

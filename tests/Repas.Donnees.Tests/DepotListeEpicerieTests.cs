@@ -482,6 +482,72 @@ public sealed class DepotListeEpicerieTests : IAsyncLifetime
         Assert.Single((await ActiveAsync()).Articles);
     }
 
+    // --- Cocher en magasin (story 6.1)
+
+    /// <summary>Qui a coché l'article (<c>null</c> si personne) et s'il a une date de coche.</summary>
+    private async Task<(int? CocheePar, bool AUneDate)> EtatCocheAsync(int articleId)
+    {
+        var cocheePar = await _baseDeTest.ScalaireAsync<int>(
+            $"SELECT ISNULL(CocheePar, 0) FROM dbo.ListeEpicerieArticle WHERE Id = {articleId};");
+        var aUneDate = await _baseDeTest.ScalaireAsync<int>(
+            $"SELECT CASE WHEN DateCoche IS NULL THEN 0 ELSE 1 END FROM dbo.ListeEpicerieArticle WHERE Id = {articleId};");
+        return (cocheePar == 0 ? null : cocheePar, aUneDate == 1);
+    }
+
+    [Fact]
+    public async Task Cocher_GardeQuiEtQuand_PuisDecocherEfface()
+    {
+        var ajout = await _depot.AjouterManuelAsync(new AjoutManuel(_lait, 1m, Unite("l")), _idMarie);
+
+        Assert.True(await _depot.CocherAsync(ajout.ArticleId, coche: true, _idMarie));
+        Assert.True(Assert.Single((await ActiveAsync()).Articles).EstCoche);
+        Assert.Equal((_idMarie, true), await EtatCocheAsync(ajout.ArticleId));
+
+        Assert.True(await _depot.CocherAsync(ajout.ArticleId, coche: false, _idMarie));
+        Assert.False(Assert.Single((await ActiveAsync()).Articles).EstCoche);
+        Assert.Equal(((int?)null, false), await EtatCocheAsync(ajout.ArticleId));
+    }
+
+    [Fact]
+    public async Task Cocher_DejaCocheParQuelquUnDAutre_GardeLePremier()
+    {
+        var paul = (await new DepotUtilisateurs(new BaseDeDonnees(_baseDeTest.ChaineConnexion)).AjouterAsync("paul@exemple.com", "Paul", "hash")).Id;
+        var ajout = await _depot.AjouterManuelAsync(new AjoutManuel(_lait, 1m, Unite("l")), _idMarie);
+        await _depot.CocherAsync(ajout.ArticleId, coche: true, _idMarie);
+
+        Assert.True(await _depot.CocherAsync(ajout.ArticleId, coche: true, paul));
+
+        Assert.Equal((_idMarie, true), await EtatCocheAsync(ajout.ArticleId));
+    }
+
+    [Fact]
+    public async Task Cocher_UnArticleDesRepas()
+    {
+        var crepes = await RecetteAsync("Crêpes", 4, Ligne(_lait, 500m, "ml"));
+        await PlanifierAsync(Dimanche, Plage.Diner, crepes, 4);
+        await _depot.GenererAsync(Dimanche, Samedi, _idMarie);
+
+        Assert.True(await _depot.CocherAsync((await ArticleAsync(_lait)).Id, coche: true, _idMarie));
+
+        Assert.True((await ArticleAsync(_lait)).EstCoche);
+    }
+
+    [Fact]
+    public async Task Cocher_UnArticleInexistant_RetourneFalse()
+    {
+        Assert.False(await _depot.CocherAsync(99999, coche: true, _idMarie));
+    }
+
+    [Fact]
+    public async Task Cocher_UnArticleDUneListeTerminee_EstRefuse()
+    {
+        var ajout = await _depot.AjouterManuelAsync(new AjoutManuel(_lait, 1m, Unite("l")), _idMarie);
+        await _baseDeTest.ExecuterAsync(
+            "UPDATE dbo.ListeEpicerie SET Statut = 'Terminee', CleActive = Id, DateTerminaison = SYSUTCDATETIME();");
+
+        Assert.False(await _depot.CocherAsync(ajout.ArticleId, coche: true, _idMarie));
+    }
+
     [Fact]
     public async Task TrouverActive_SansListe_RetourneNull()
     {
