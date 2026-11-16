@@ -1,4 +1,5 @@
 @page "/epicerie"
+@implements IDisposable
 @using Repas.Domaine.Calendrier
 @using Repas.Domaine.Epicerie
 @using Repas.Domaine.Mesures
@@ -10,6 +11,7 @@
 @inject DepotListeEpicerie DepotListe
 @inject DepotUnites DepotUnites
 @inject DepotCategories DepotCategories
+@inject DiffusionListe Diffusion
 
 <PageTitle>Épicerie</PageTitle>
 
@@ -224,6 +226,10 @@ else
     private bool _focusQuantite;
     private Guid _cleRecherche = Guid.NewGuid();
 
+    // Temps réel : cet écran annonce ses changements et reçoit ceux des autres.
+    private readonly Guid _ecran = Guid.NewGuid();
+    private IDisposable? _abonnement;
+
     [CascadingParameter]
     private Task<AuthenticationState> EtatAuthentification { get; set; } = default!;
 
@@ -236,6 +242,7 @@ else
         _categories = await DepotCategories.ListerAsync();
         _convertisseur = new ConvertisseurUnites(_unites);
         _unitesParId = _unites.ToDictionary(u => u.Id);
+        _abonnement = Diffusion.Abonner(SurChangementAsync);
         await ChargerAsync();
     }
 
@@ -313,7 +320,7 @@ else
                 resultat.Additionne ? $"« {choisi.Nom} » était déjà sur la liste : la quantité a été ajoutée." : $"« {choisi.Nom} » ajouté à la liste.",
                 erreur: false);
             AnnulerAjout();
-            await ChargerAsync();
+            await ChargerEtAnnoncerAsync();
         }
         catch (AjoutManuelRefuseException ex)
         {
@@ -337,21 +344,44 @@ else
             Afficher($"« {article.NomIngredient} » n'était plus sur la liste.", erreur: true);
         }
 
-        await ChargerAsync();
+        await ChargerEtAnnoncerAsync();
     }
 
-    private async Task ChargerAsync()
+    /// <param name="reprendrePeriode">
+    /// Faux quand c'est quelqu'un d'autre qui a changé la liste : on ne touche pas aux dates en cours de saisie.
+    /// </param>
+    private async Task ChargerAsync(bool reprendrePeriode = true)
     {
         _liste = await DepotListe.TrouverActiveAsync();
         _charge = true;
 
         // Une liste générée propose sa propre période pour la regénérer.
-        if (_liste?.Liste is { DateDebut: { } debut, DateFin: { } fin })
+        if (reprendrePeriode && _liste?.Liste is { DateDebut: { } debut, DateFin: { } fin })
         {
             _debut = debut;
             _fin = fin;
         }
     }
+
+    /// <summary>Relit la liste après un changement fait ici, et l'annonce aux autres écrans ouverts.</summary>
+    private async Task ChargerEtAnnoncerAsync()
+    {
+        await ChargerAsync();
+        var auteur = (await EtatAuthentification).User.Identity?.Name;
+        _ = Diffusion.PublierAsync(ChangementListe.Contenu(_ecran, auteur));
+    }
+
+    /// <summary>Un autre écran a changé la liste (ajout, coche en magasin…) : la page se met à jour d'elle-même.</summary>
+    private Task SurChangementAsync(ChangementListe changement) =>
+        changement.Origine == _ecran
+            ? Task.CompletedTask
+            : InvokeAsync(async () =>
+            {
+                await ChargerAsync(reprendrePeriode: false);
+                StateHasChanged();
+            });
+
+    public void Dispose() => _abonnement?.Dispose();
 
     /// <summary>Raccourcis de semaine et dates, communs à la génération et à la regénération.</summary>
     private RenderFragment ChoixPeriode => __builder =>
@@ -398,7 +428,7 @@ else
                 Afficher(ResumerRegeneration(resultat), erreur: false);
             }
 
-            await ChargerAsync();
+            await ChargerEtAnnoncerAsync();
         }
         finally
         {
@@ -480,7 +510,7 @@ else
                     break;
             }
 
-            await ChargerAsync();
+            await ChargerEtAnnoncerAsync();
         }
         finally
         {

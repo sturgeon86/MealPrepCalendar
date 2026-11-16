@@ -1458,3 +1458,9 @@ a.bouton-secondaire {
     color: #9aa5b1;
     text-decoration: line-through;
 }
+
+.activite-magasin {
+    margin: 0.375rem 0 0;
+    color: #1f6f4a;
+    font-size: 0.9375rem;
+}

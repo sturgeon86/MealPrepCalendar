@@ -1,10 +1,12 @@
 @page "/magasin"
+@implements IDisposable
 @using Repas.Domaine.Epicerie
 @using Repas.Domaine.Mesures
 @using Repas.Donnees
 @using Repas.Web.Authentification
 @inject DepotListeEpicerie DepotListe
 @inject DepotUnites DepotUnites
+@inject DiffusionListe Diffusion
 
 <PageTitle>Magasin</PageTitle>
 
@@ -17,6 +19,11 @@
             <strong>@(_articles.Count - coches)</strong> à prendre · @coches / @_articles.Count dans le panier
         </p>
         <progress class="barre-magasin" max="@_articles.Count" value="@coches" aria-hidden="true"></progress>
+    }
+    @if (_activite is not null)
+    {
+        @* Ce que font les autres en ce moment, sur leur téléphone. *@
+        <p class="activite-magasin" aria-live="polite">@_activite</p>
     }
 </div>
 
@@ -93,9 +100,14 @@ else
     private ConvertisseurUnites _convertisseur = new([]);
     private Dictionary<int, Unite> _unitesParId = [];
     private string? _message;
+    private string? _activite;
 
     // Rayons ouverts ou fermés à la main ; sinon, un rayon terminé se replie de lui-même.
     private readonly Dictionary<string, bool> _replisChoisis = [];
+
+    // Cet écran, pour ignorer ses propres changements quand ils reviennent par la diffusion.
+    private readonly Guid _ecran = Guid.NewGuid();
+    private IDisposable? _abonnement;
 
     [CascadingParameter]
     private Task<AuthenticationState> EtatAuthentification { get; set; } = default!;
@@ -105,8 +117,38 @@ else
         var unites = await DepotUnites.ListerAsync();
         _convertisseur = new ConvertisseurUnites(unites);
         _unitesParId = unites.ToDictionary(u => u.Id);
+        _abonnement = Diffusion.Abonner(SurChangementAsync);
         await ChargerAsync();
     }
+
+    /// <summary>Un autre téléphone a changé la liste : appliqué ici sans recharger la page.</summary>
+    private Task SurChangementAsync(ChangementListe changement)
+    {
+        if (changement.Origine == _ecran)
+        {
+            return Task.CompletedTask;
+        }
+
+        // L'avis arrive d'un autre écran : on repasse par le fil de cet écran-ci avant de le modifier.
+        return InvokeAsync(async () =>
+        {
+            var article = _articles.Find(a => a.Id == changement.ArticleId);
+            if (changement is { Type: TypeChangementListe.Coche, EstCoche: { } coche } && article is not null)
+            {
+                Remplacer(article with { EstCoche = coche });
+                _activite = $"{changement.Auteur ?? "Quelqu'un"} {(coche ? "a pris" : "a remis")} {changement.NomArticle}.";
+            }
+            else
+            {
+                await ChargerAsync();
+                _activite = $"{changement.Auteur ?? "Quelqu'un"} a modifié la liste.";
+            }
+
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose() => _abonnement?.Dispose();
 
     private async Task ChargerAsync()
     {
@@ -127,13 +169,18 @@ else
         // L'écran répond tout de suite ; la base suit. En cas d'échec, on relit la liste.
         Remplacer(article with { EstCoche = coche });
 
-        var utilisateur = (await EtatAuthentification).User.ObtenirIdUtilisateur()
+        var utilisateur = (await EtatAuthentification).User;
+        var utilisateurId = utilisateur.ObtenirIdUtilisateur()
             ?? throw new InvalidOperationException("Aucun utilisateur connecté.");
-        if (!await DepotListe.CocherAsync(article.Id, coche, utilisateur))
+        if (!await DepotListe.CocherAsync(article.Id, coche, utilisateurId))
         {
             _message = $"« {article.NomIngredient} » n'est plus sur la liste active ; la liste a été relue.";
             await ChargerAsync();
+            return;
         }
+
+        // Les autres téléphones l'appliquent de leur côté ; on n'attend pas qu'ils aient fini.
+        _ = Diffusion.PublierAsync(ChangementListe.Coche(_ecran, article, coche, utilisateur.Identity?.Name));
     }
 
     private void Remplacer(ArticleListe article)

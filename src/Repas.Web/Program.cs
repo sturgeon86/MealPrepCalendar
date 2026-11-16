@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
+using Repas.Domaine.Epicerie;
 using Repas.Domaine.Recettes;
 using Repas.Domaine.Utilisateurs;
 using Repas.Donnees;
@@ -33,6 +34,16 @@ builder.Services.AddSingleton<DepotIngredients>();
 builder.Services.AddSingleton<DepotRecettes>();
 builder.Services.AddSingleton<DepotCalendrier>();
 builder.Services.AddSingleton<DepotListeEpicerie>();
+
+// Temps réel : les écrans ouverts de la liste reçoivent les changements faits ailleurs (un seul conteneur : en mémoire).
+builder.Services.AddSingleton(services =>
+{
+    var journal = services.GetRequiredService<ILoggerFactory>().CreateLogger<DiffusionListe>();
+    return new DiffusionListe
+    {
+        SurErreur = ex => journal.LogWarning(ex, "Un écran n'a pas pu recevoir un changement de la liste d'épicerie."),
+    };
+});
 
 // Photos des recettes : volume /data/photos dans l'image Docker, sinon un dossier local ignoré par git.
 var dossierPhotos = builder.Configuration["Photos:Chemin"];
