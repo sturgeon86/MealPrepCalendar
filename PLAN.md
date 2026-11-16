@@ -100,7 +100,7 @@ référentiel, écran de validation), puis les sources, de la plus simple à la 
 `HttpClient` et `System.Text.Json` suffisent (Ollama et les données `schema.org` parlent JSON).
 
 ## Itération 8 — Import de recettes
-- [ ] **8.1 Lire une ligne d'ingrédient** (domaine) : « 1 ½ tasse de farine tout usage, tamisée » → quantité, unité, nom, précision.
+- [x] **8.1 Lire une ligne d'ingrédient** (domaine) : « 1 ½ tasse de farine tout usage, tamisée » → quantité, unité, nom, précision.
   - *Critères :* tests sur des lignes réelles : fractions, unités au pluriel et abrégées (« tasses », « c. à s. », « c. à thé », « ml », « lb »), unités anglaises courantes (« cup », « tbsp »), « au goût », « 2 oignons », « 1 boîte (540 ml) de pois chiches ».
 - [ ] **8.2 Rapprocher un nom du référentiel** (domaine) : par nom et synonyme, sans égard à la casse, aux accents ni au pluriel (« oignons jaunes » → *Oignon jaune*) ; sinon des suggestions proches, ou « à créer ».
   - *Critères :* tests de rapprochement exact, approché et sans correspondance ; aucun choix silencieux quand deux ingrédients conviennent.
