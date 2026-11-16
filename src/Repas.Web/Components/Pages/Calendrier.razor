@@ -1,0 +1,103 @@
+@page "/calendrier"
+@using Repas.Domaine.Calendrier
+@using Repas.Donnees
+@inject DepotCalendrier DepotCalendrier
+@inject NavigationManager Navigation
+
+<PageTitle>Calendrier</PageTitle>
+
+<div class="entete-page">
+    <h1>Calendrier</h1>
+</div>
+
+<nav class="navigation-semaine" aria-label="Changer de semaine">
+    <a class="bouton-secondaire" href="@Adresse(_semaine.Precedente())" aria-label="Semaine précédente">←<span class="texte-navigation"> Précédente</span></a>
+    <div class="titre-semaine">
+        <h2 aria-live="polite">@_semaine.Libelle</h2>
+        @if (!_semaine.Contient(_aujourdhui))
+        {
+            <a class="bouton-lien-texte" href="calendrier">Revenir à cette semaine</a>
+        }
+    </div>
+    <a class="bouton-secondaire" href="@Adresse(_semaine.Suivante())" aria-label="Semaine suivante"><span class="texte-navigation">Suivante </span>→</a>
+</nav>
+
+@if (_repas is null)
+{
+    <p>Chargement…</p>
+}
+else
+{
+    <div class="grille-semaine">
+        @foreach (var jour in _semaine.Jours)
+        {
+            var estAujourdhui = jour == _aujourdhui;
+            <section class="jour @(estAujourdhui ? "aujourdhui" : null)" aria-label="@Semaine.LibelleJour(jour)">
+                <h3 class="titre-jour">
+                    @Majuscule(Semaine.LibelleJour(jour))
+                    @if (estAujourdhui)
+                    {
+                        <span class="pastille">Aujourd'hui</span>
+                    }
+                </h3>
+                @foreach (var plage in Enum.GetValues<Plage>())
+                {
+                    var repasDeLaPlage = _repas.Where(r => r.Date == jour && r.Plage == plage).ToList();
+                    <div class="plage">
+                        <span class="nom-plage">@plage.Libelle()</span>
+                        @if (repasDeLaPlage.Count == 0)
+                        {
+                            <span class="plage-vide">—</span>
+                        }
+                        else
+                        {
+                            <ul class="repas-plage">
+                                @foreach (var repas in repasDeLaPlage)
+                                {
+                                    <li @key="repas.Id">
+                                        @if (repas.RecetteId is { } recetteId)
+                                        {
+                                            <a href="recettes/@recetteId?portions=@repas.Portions">@repas.Titre</a>
+                                            <span class="details-ligne"> · @repas.Portions portion@(repas.Portions > 1 ? "s" : "")</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="repas-libre">@repas.Titre</span>
+                                        }
+                                    </li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                }
+            </section>
+        }
+    </div>
+}
+
+@code {
+    private Semaine _semaine;
+    private DateOnly _aujourdhui;
+    private List<RepasPlanifie>? _repas;
+
+    /// <summary>
+    /// N'importe quel jour de la semaine à afficher (<c>?semaine=2026-11-15</c>) ; cette semaine par défaut.
+    /// Lu comme texte : une date illisible est ignorée au lieu de provoquer une erreur.
+    /// </summary>
+    [SupplyParameterFromQuery(Name = "semaine")]
+    public string? JourDemande { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // L'heure du serveur suit le fuseau de la famille (variable TZ du conteneur).
+        _aujourdhui = DateOnly.FromDateTime(DateTime.Now);
+        var jour = DateOnly.TryParseExact(JourDemande, "yyyy-MM-dd", out var demande) ? demande : _aujourdhui;
+        _semaine = Semaine.Contenant(jour);
+        _repas = await DepotCalendrier.ListerAsync(_semaine.Debut, _semaine.Fin);
+    }
+
+    /// <summary>« lundi 16 nov. » devient « Lundi 16 nov. » en tête de colonne.</summary>
+    private static string Majuscule(string texte) => texte.Length == 0 ? texte : char.ToUpperInvariant(texte[0]) + texte[1..];
+
+    private static string Adresse(Semaine semaine) => $"calendrier?semaine={semaine.Debut:yyyy-MM-dd}";
+}

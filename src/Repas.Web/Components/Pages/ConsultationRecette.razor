@@ -127,9 +127,14 @@ else
     [Parameter]
     public int Id { get; set; }
 
-    /// <summary>Nombre de portions à afficher au départ, par exemple depuis le calendrier : <c>?portions=6</c>.</summary>
+    /// <summary>
+    /// Nombre de portions à afficher au départ, par exemple depuis le calendrier : <c>?portions=6</c>.
+    /// Lu comme texte : une valeur illisible est ignorée au lieu de provoquer une erreur.
+    /// </summary>
     [SupplyParameterFromQuery(Name = "portions")]
-    public int? PortionsDemandees { get; set; }
+    public string? PortionsDemandeesTexte { get; set; }
+
+    private int? PortionsDemandees => int.TryParse(PortionsDemandeesTexte, out var portions) ? portions : null;
 
     private List<string> Temps
     {

@@ -127,8 +127,11 @@ else
     [SupplyParameterFromQuery(Name = "etiquette")]
     public string? EtiquetteFiltre { get; set; }
 
+    /// <summary>Lu comme texte : une valeur illisible dans l'adresse est ignorée au lieu de provoquer une erreur.</summary>
     [SupplyParameterFromQuery(Name = "temps")]
-    public int? TempsFiltre { get; set; }
+    public string? TempsFiltreTexte { get; set; }
+
+    private int? TempsFiltre => int.TryParse(TempsFiltreTexte, out var minutes) ? minutes : null;
 
     protected override async Task OnInitializedAsync()
     {

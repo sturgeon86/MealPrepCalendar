@@ -814,3 +814,109 @@ a.bouton-secondaire {
 .filtres-recettes .champ {
     flex: 1 1 10rem;
 }
+
+/* --- Calendrier --- */
+.navigation-semaine {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin: 0.5rem 0 1rem;
+}
+
+.titre-semaine {
+    text-align: center;
+}
+
+.titre-semaine h2 {
+    margin: 0;
+    font-size: 1.125rem;
+}
+
+/* Trois rangées partagées par tous les jours (titre, dîner, souper) : les plages restent alignées
+   d'une colonne à l'autre, quelle que soit la longueur des noms de recettes. */
+.grille-semaine {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-template-rows: auto auto auto;
+    gap: 0 0.5rem;
+    margin-bottom: 2rem;
+}
+
+.grille-semaine .jour {
+    display: grid;
+    grid-row: span 3;
+    grid-template-rows: subgrid;
+}
+
+/* Le calendrier a besoin de plus de largeur que les autres pages. */
+.contenu:has(.grille-semaine) {
+    max-width: 80rem;
+}
+
+.jour {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    border-radius: 0.5rem;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.jour.aujourdhui {
+    outline: 2px solid #1f6f4a;
+}
+
+.titre-jour {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.5rem;
+    margin: 0;
+    padding: 0.5rem 0.625rem;
+    border-bottom: 1px solid #e4e7eb;
+    font-size: 0.9375rem;
+}
+
+.titre-jour .pastille {
+    margin: 0;
+}
+
+.plage {
+    flex: 1;
+    padding: 0.5rem 0.625rem;
+    border-top: 1px solid #e4e7eb;
+    font-size: 0.9375rem;
+}
+
+.titre-jour + .plage {
+    border-top: 0;
+}
+
+.nom-plage {
+    display: block;
+    color: #52606d;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+
+.plage-vide {
+    color: #9aa5b1;
+}
+
+.repas-plage {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.repas-plage li {
+    margin-top: 0.25rem;
+    overflow-wrap: anywhere;
+}
+
+.repas-libre {
+    font-style: italic;
+}

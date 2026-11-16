@@ -62,7 +62,7 @@ L'app tourne sur Unraid en réseau local seulement (`http://192.168.1.10:8096`, 
 ## Itération 4 — Calendrier de repas
 - [x] **4.1 Table** `RepasPlanifie`.
   - *Décidé :* une recette (avec portions) ou un texte libre, jamais les deux ; plusieurs repas possibles dans une même plage ; une recette planifiée ne peut pas être supprimée.
-- [ ] **4.2 Vue semaine** : 7 jours × Dîner / Souper, navigation semaine précédente / suivante.
+- [x] **4.2 Vue semaine** : 7 jours × Dîner / Souper, navigation semaine précédente / suivante.
 - [ ] **4.3 Planifier un repas** : choisir une recette (recherche) et un nombre de portions, ou saisir un repas libre (restaurant, restes…).
   - *Critères :* RecetteId ou TexteLibre obligatoire ; déplacement et suppression possibles.
 - [ ] **4.4 Affichage cellulaire** : la vue semaine reste utilisable sur petit écran (jours empilés).
