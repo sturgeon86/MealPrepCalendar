@@ -109,30 +109,19 @@ public sealed class DepotListeEpicerie : DepotBase
     private async Task<ResultatGeneration> GenererDansAsync(
         SessionSql s, DateOnly debut, DateOnly fin, int creeParId, CancellationToken annulation)
     {
-        // Verrouille la liste active (ou l'absence de liste active) jusqu'à la fin de la transaction.
-        const string sqlActive = """
-            SELECT Id, DateDebut FROM dbo.ListeEpicerie WITH (UPDLOCK, HOLDLOCK) WHERE Statut = 'Active';
-            """;
-        // Type nullable explicite : sans liste active, on veut null, pas un tuple (0, false).
-        var active = await s.PremierOuDefautAsync(
-            sqlActive, l => ((int Id, bool Generee)?)(l.GetInt32(0), !l.IsDBNull(1)), annulation: annulation);
+        var active = await VerrouillerActiveAsync(s, annulation);
         if (active is { Generee: true })
         {
             return new ResultatGeneration(StatutGeneration.DejaGeneree, active.Value.Id, 0, 0);
         }
 
-        var repas = await LireRepasAsync(s, debut, fin, annulation);
+        var (repas, articles) = await CalculerAsync(s, debut, fin, annulation);
         if (repas.Count == 0)
         {
             return new ResultatGeneration(StatutGeneration.AucunRepas, active?.Id, 0, 0);
         }
 
-        var calcul = new CalculListe(
-            new ConvertisseurUnites(await _unites.ListerAsync(s, annulation)),
-            await LireMesuresAsync(s, debut, fin, annulation));
-        var articles = calcul.Calculer(repas);
-
-        var nom = $"Épicerie du {Semaine.LibellePeriode(debut, fin)}";
+        var nom = NomListe(debut, fin);
         var listeId = active is { } existante
             ? await CompleterAsync(s, existante.Id, nom, debut, fin, annulation)
             : await CreerAsync(s, nom, debut, fin, creeParId, annulation);
@@ -144,6 +133,130 @@ public sealed class DepotListeEpicerie : DepotBase
 
         return new ResultatGeneration(StatutGeneration.Generee, listeId, repas.Count, articles.Count);
     }
+
+    /// <summary>
+    /// Regénère la liste active pour la période (la même ou une autre), dans une transaction : les articles qui
+    /// viennent des repas sont recalculés selon <see cref="Regeneration"/> ; les articles manuels et reportés ne
+    /// changent pas.
+    /// </summary>
+    public Task<ResultatRegeneration> RegenererAsync(
+        DateOnly debut, DateOnly fin, SessionSql? session = null, CancellationToken annulation = default)
+    {
+        if (fin < debut)
+        {
+            throw new ArgumentException("La fin de la période précède son début.", nameof(fin));
+        }
+
+        return DansTransactionAsync(session, s => RegenererDansAsync(s, debut, fin, annulation), annulation);
+    }
+
+    private async Task<ResultatRegeneration> RegenererDansAsync(
+        SessionSql s, DateOnly debut, DateOnly fin, CancellationToken annulation)
+    {
+        const string sqlExistants = """
+            SELECT Id, IngredientId, UniteId, QuantiteTotale, EstCoche
+            FROM dbo.ListeEpicerieArticle
+            WHERE ListeId = @listeId AND EstManuel = 0 AND EstReporte = 0;
+            """;
+        const string sqlSupprimer = "DELETE FROM dbo.ListeEpicerieArticle WHERE Id = @id;";
+        const string sqlMettreAJour = """
+            UPDATE dbo.ListeEpicerieArticle
+            SET QuantiteTotale = @quantite, UniteId = @uniteId, NbRecettes = @nbRecettes,
+                EstCoche = CASE WHEN @decocher = 1 THEN 0 ELSE EstCoche END,
+                CocheePar = CASE WHEN @decocher = 1 THEN NULL ELSE CocheePar END,
+                DateCoche = CASE WHEN @decocher = 1 THEN NULL ELSE DateCoche END
+            WHERE Id = @id;
+            DELETE FROM dbo.ListeEpicerieArticleSource WHERE ArticleId = @id;
+            """;
+        const string sqlConserves = """
+            SELECT COUNT(*) FROM dbo.ListeEpicerieArticle
+            WHERE ListeId = @listeId AND (EstManuel = 1 OR EstReporte = 1);
+            """;
+
+        var active = await VerrouillerActiveAsync(s, annulation);
+        if (active is not { Generee: true } liste)
+        {
+            return new ResultatRegeneration(StatutRegeneration.AucuneListeGeneree, active?.Id, 0, 0, 0, 0, 0, 0);
+        }
+
+        void Liste(SqlParameterCollection p) => p.Ajouter("@listeId", SqlDbType.Int, liste.Id);
+
+        var (repas, calcules) = await CalculerAsync(s, debut, fin, annulation);
+        var existants = await s.ListerAsync(
+            sqlExistants,
+            l => new ArticleExistant(l.GetInt32(0), l.GetInt32(1), l.IsDBNull(2) ? null : l.GetInt32(2), LireDecimal(l, 3), l.GetBoolean(4)),
+            Liste,
+            annulation);
+        var plan = Regeneration.Planifier(existants, calcules);
+
+        foreach (var id in plan.Suppressions)
+        {
+            await s.ExecuterAsync(sqlSupprimer, p => p.Ajouter("@id", SqlDbType.Int, id), annulation);
+        }
+
+        foreach (var miseAJour in plan.MisesAJour)
+        {
+            var nouveau = miseAJour.Nouveau;
+            await s.ExecuterAsync(
+                sqlMettreAJour,
+                p => p
+                    .Ajouter("@id", SqlDbType.Int, miseAJour.ArticleId)
+                    .AjouterDecimal("@quantite", 18, EchelleQuantite, Arrondir(nouveau.Quantite))
+                    .Ajouter("@uniteId", SqlDbType.Int, nouveau.UniteId)
+                    .Ajouter("@nbRecettes", SqlDbType.Int, nouveau.NbRecettes)
+                    .Ajouter("@decocher", SqlDbType.Bit, miseAJour.Decocher),
+                annulation);
+            await EcrireSourcesAsync(s, miseAJour.ArticleId, nouveau, annulation);
+        }
+
+        foreach (var ajout in plan.Ajouts)
+        {
+            await EcrireArticleAsync(s, liste.Id, ajout, annulation);
+        }
+
+        await CompleterAsync(s, liste.Id, NomListe(debut, fin), debut, fin, annulation);
+        var conserves = await s.ScalaireAsync<int>(sqlConserves, Liste, annulation);
+
+        return new ResultatRegeneration(
+            StatutRegeneration.Regeneree,
+            liste.Id,
+            repas.Count,
+            plan.Ajouts.Count,
+            plan.MisesAJour.Count,
+            plan.Suppressions.Count,
+            plan.MisesAJour.Count(m => m.Decocher),
+            conserves);
+    }
+
+    /// <summary>
+    /// La liste active, verrouillée (ou l'absence de liste active) jusqu'à la fin de la transaction :
+    /// deux générations simultanées s'attendent au lieu de se mélanger.
+    /// </summary>
+    private static Task<(int Id, bool Generee)?> VerrouillerActiveAsync(SessionSql s, CancellationToken annulation)
+    {
+        const string sql = "SELECT Id, DateDebut FROM dbo.ListeEpicerie WITH (UPDLOCK, HOLDLOCK) WHERE Statut = 'Active';";
+
+        // Type nullable explicite : sans liste active, on veut null, pas un tuple (0, false).
+        return s.PremierOuDefautAsync(sql, l => ((int Id, bool Generee)?)(l.GetInt32(0), !l.IsDBNull(1)), annulation: annulation);
+    }
+
+    /// <summary>Les repas avec recette de la période et les articles qu'ils demandent.</summary>
+    private async Task<(List<RepasACalculer> Repas, IReadOnlyList<ArticleCalcule> Articles)> CalculerAsync(
+        SessionSql s, DateOnly debut, DateOnly fin, CancellationToken annulation)
+    {
+        var repas = await LireRepasAsync(s, debut, fin, annulation);
+        if (repas.Count == 0)
+        {
+            return (repas, []);
+        }
+
+        var calcul = new CalculListe(
+            new ConvertisseurUnites(await _unites.ListerAsync(s, annulation)),
+            await LireMesuresAsync(s, debut, fin, annulation));
+        return (repas, calcul.Calculer(repas));
+    }
+
+    private static string NomListe(DateOnly debut, DateOnly fin) => $"Épicerie du {Semaine.LibellePeriode(debut, fin)}";
 
     /// <summary>Les repas avec recette de la période, dans l'ordre du calendrier, avec les ingrédients de leur recette.</summary>
     private static async Task<List<RepasACalculer>> LireRepasAsync(
@@ -239,10 +352,6 @@ public sealed class DepotListeEpicerie : DepotBase
             OUTPUT INSERTED.Id
             VALUES (@listeId, @ingredientId, @quantite, @uniteId, @nbRecettes);
             """;
-        const string sqlSource = """
-            INSERT INTO dbo.ListeEpicerieArticleSource (ArticleId, RepasPlanifieId, Quantite, UniteId)
-            VALUES (@articleId, @repasId, @quantite, @uniteId);
-            """;
 
         var articleId = await s.ScalaireAsync<int>(
             sqlArticle,
@@ -253,6 +362,17 @@ public sealed class DepotListeEpicerie : DepotBase
                 .Ajouter("@uniteId", SqlDbType.Int, article.UniteId)
                 .Ajouter("@nbRecettes", SqlDbType.Int, article.NbRecettes),
             annulation);
+
+        await EcrireSourcesAsync(s, articleId, article, annulation);
+    }
+
+    /// <summary>Les repas d'où vient l'article, avec leur part dans l'unité de l'article.</summary>
+    private static async Task EcrireSourcesAsync(SessionSql s, int articleId, ArticleCalcule article, CancellationToken annulation)
+    {
+        const string sqlSource = """
+            INSERT INTO dbo.ListeEpicerieArticleSource (ArticleId, RepasPlanifieId, Quantite, UniteId)
+            VALUES (@articleId, @repasId, @quantite, @uniteId);
+            """;
 
         foreach (var source in article.Sources)
         {

@@ -234,6 +234,122 @@ public sealed class DepotListeEpicerieTests : IAsyncLifetime
         Assert.Empty((await ActiveAsync()).Articles);
     }
 
+    // --- Regénération (story 5.4)
+
+    private async Task<ArticleListe> ArticleAsync(int ingredientId) =>
+        Assert.Single((await ActiveAsync()).Articles, a => a.IngredientId == ingredientId && !a.EstManuel && !a.EstReporte);
+
+    private Task CocherAsync(int articleId) => _baseDeTest.ExecuterAsync(
+        $"UPDATE dbo.ListeEpicerieArticle SET EstCoche = 1, CocheePar = {_idMarie}, DateCoche = SYSUTCDATETIME() WHERE Id = {articleId};");
+
+    [Fact]
+    public async Task Regenerer_SuitLesChangementsDuCalendrierEnGardantLesLignes()
+    {
+        var crepes = await RecetteAsync("Crêpes", 4, Ligne(_lait, 500m, "ml"));
+        var gateau = await RecetteAsync("Gâteau", 4, Ligne(_lait, 1m, "tasse"), Ligne(_farine, 300m, "g"));
+        await PlanifierAsync(Dimanche, Plage.Diner, crepes, 4);
+        var generation = await _depot.GenererAsync(Dimanche, Samedi, _idMarie);
+        var laitAvant = await ArticleAsync(_lait);
+
+        await PlanifierAsync(Dimanche.AddDays(3), Plage.Souper, gateau, 4);
+        var resultat = await _depot.RegenererAsync(Dimanche, Samedi);
+
+        Assert.Equal(
+            new ResultatRegeneration(StatutRegeneration.Regeneree, generation.ListeId, 2, NbAjoutes: 1, NbMisAJour: 1, NbRetires: 0, NbDecoches: 0, NbConserves: 0),
+            resultat);
+        var lait = await ArticleAsync(_lait);
+        Assert.Equal((laitAvant.Id, 750m, 2), (lait.Id, lait.Quantite!.Value, lait.NbRecettes));
+        Assert.Equal(300m, (await ArticleAsync(_farine)).Quantite);
+        Assert.Equal(2, await _baseDeTest.ScalaireAsync<int>($"SELECT COUNT(*) FROM dbo.ListeEpicerieArticleSource WHERE ArticleId = {lait.Id};"));
+    }
+
+    [Fact]
+    public async Task Regenerer_RetireCeQuiNEstPlusPlanifie()
+    {
+        var crepes = await RecetteAsync("Crêpes", 4, Ligne(_lait, 500m, "ml"));
+        var gateau = await RecetteAsync("Gâteau", 4, Ligne(_farine, 300m, "g"));
+        await PlanifierAsync(Dimanche, Plage.Diner, crepes, 4);
+        var repasGateau = await PlanifierAsync(Dimanche.AddDays(1), Plage.Diner, gateau, 4);
+        await _depot.GenererAsync(Dimanche, Samedi, _idMarie);
+
+        // Le repas retiré du calendrier emporte sa trace ; la regénération retire l'article.
+        Assert.True(await _calendrier.SupprimerAsync(repasGateau));
+        var resultat = await _depot.RegenererAsync(Dimanche, Samedi);
+
+        Assert.Equal((1, 1), (resultat.NbRetires, resultat.NbMisAJour));
+        Assert.Equal([_lait], (await ActiveAsync()).Articles.Select(a => a.IngredientId));
+    }
+
+    [Fact]
+    public async Task Regenerer_ConserveLesArticlesManuelsEtReportes()
+    {
+        var crepes = await RecetteAsync("Crêpes", 4, Ligne(_lait, 500m, "ml"));
+        await PlanifierAsync(Dimanche, Plage.Diner, crepes, 4);
+        var generation = await _depot.GenererAsync(Dimanche, Samedi, _idMarie);
+        await _baseDeTest.ExecuterAsync(
+            $"""
+            INSERT INTO dbo.ListeEpicerieArticle (ListeId, IngredientId, QuantiteTotale, UniteId, EstManuel)
+            VALUES ({generation.ListeId}, {_lait}, 1000, {Unite("ml")}, 1);
+            INSERT INTO dbo.ListeEpicerieArticle (ListeId, IngredientId, EstReporte, ReporteDeArticleId)
+            VALUES ({generation.ListeId}, {_sel}, 1, SCOPE_IDENTITY());
+            """);
+
+        var resultat = await _depot.RegenererAsync(Dimanche, Samedi);
+
+        Assert.Equal(2, resultat.NbConserves);
+        var articles = (await ActiveAsync()).Articles;
+        // Le lait manuel reste à part de celui des repas, avec sa propre quantité.
+        Assert.Equal(
+            [(_lait, 500m, false, false), (_lait, 1000m, true, false), (_sel, (decimal?)null, false, true)],
+            articles.OrderBy(a => a.IngredientId == _sel).ThenBy(a => a.EstManuel).Select(a => (a.IngredientId, a.Quantite, a.EstManuel, a.EstReporte)));
+    }
+
+    [Fact]
+    public async Task Regenerer_GardeLesCasesCochees_SaufSiLaQuantiteAugmente()
+    {
+        var crepes = await RecetteAsync("Crêpes", 4, Ligne(_lait, 500m, "ml"), Ligne(_farine, 200m, "g"));
+        var gateau = await RecetteAsync("Gâteau", 4, Ligne(_lait, 1m, "tasse"));
+        await PlanifierAsync(Dimanche, Plage.Diner, crepes, 4);
+        await _depot.GenererAsync(Dimanche, Samedi, _idMarie);
+        await CocherAsync((await ArticleAsync(_lait)).Id);
+        await CocherAsync((await ArticleAsync(_farine)).Id);
+
+        await PlanifierAsync(Dimanche.AddDays(2), Plage.Souper, gateau, 4); // plus de lait, même farine
+        var resultat = await _depot.RegenererAsync(Dimanche, Samedi);
+
+        Assert.Equal(1, resultat.NbDecoches);
+        Assert.False((await ArticleAsync(_lait)).EstCoche);
+        Assert.True((await ArticleAsync(_farine)).EstCoche);
+        Assert.Equal(1, await _baseDeTest.ScalaireAsync<int>(
+            $"SELECT COUNT(*) FROM dbo.ListeEpicerieArticle WHERE IngredientId = {_lait} AND CocheePar IS NULL AND DateCoche IS NULL;"));
+    }
+
+    [Fact]
+    public async Task Regenerer_AvecUneAutrePeriode_ChangeLeNomEtLesDates()
+    {
+        var crepes = await RecetteAsync("Crêpes", 4, Ligne(_lait, 500m, "ml"));
+        await PlanifierAsync(Dimanche, Plage.Diner, crepes, 4);
+        await PlanifierAsync(Samedi.AddDays(3), Plage.Diner, crepes, 4);
+        await _depot.GenererAsync(Dimanche, Samedi, _idMarie);
+
+        var resultat = await _depot.RegenererAsync(Dimanche, Samedi.AddDays(7));
+
+        var (liste, articles) = await ActiveAsync();
+        Assert.Equal(2, resultat.NbRepas);
+        Assert.Equal("Épicerie du 15 au 28 novembre 2026", liste.Nom);
+        Assert.Equal(Samedi.AddDays(7), liste.DateFin);
+        Assert.Equal(1000m, Assert.Single(articles).Quantite);
+    }
+
+    [Fact]
+    public async Task Regenerer_SansListeGeneree_NeFaitRien()
+    {
+        var resultat = await _depot.RegenererAsync(Dimanche, Samedi);
+
+        Assert.Equal(StatutRegeneration.AucuneListeGeneree, resultat.Statut);
+        Assert.Null(await _depot.TrouverActiveAsync());
+    }
+
     [Fact]
     public async Task TrouverActive_SansListe_RetourneNull()
     {

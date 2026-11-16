@@ -30,31 +30,26 @@ else if (_liste is null || !_liste.Liste.EstGeneree)
         <p class="aide">
             La liste additionne les ingrédients des recettes planifiées au calendrier pendant la période choisie.
         </p>
-
-        <div class="suggestions-rapides">
-            <button type="button" class="bouton-secondaire bouton-mini" @onclick="() => ChoisirSemaine(_semaineCourante)">
-                Cette semaine (@_semaineCourante.Libelle)
-            </button>
-            <button type="button" class="bouton-secondaire bouton-mini" @onclick="() => ChoisirSemaine(_semaineCourante.Suivante())">
-                Semaine prochaine (@_semaineCourante.Suivante().Libelle)
-            </button>
-        </div>
-
-        <div class="grille-2">
-            <div class="champ">
-                <label for="debut">Du</label>
-                <input id="debut" type="date" @bind="_debut" />
-            </div>
-            <div class="champ">
-                <label for="fin">Au</label>
-                <input id="fin" type="date" @bind="_fin" />
-            </div>
-        </div>
-
+        @ChoixPeriode
         <button type="button" class="bouton-principal bouton-compact" disabled="@_enCours" @onclick="GenererAsync">
             @(_enCours ? "Génération…" : "Générer la liste")
         </button>
     </section>
+}
+else
+{
+    @* Fermé par défaut : en magasin, la liste passe avant. *@
+    <details class="carte-formulaire carte-large regeneration">
+        <summary>Regénérer la liste</summary>
+        <p class="aide">
+            Après un changement au calendrier : les articles des repas sont recalculés. Les articles ajoutés à la main
+            et les reportés ne changent pas, et les cases cochées restent cochées, sauf si la quantité a augmenté.
+        </p>
+        @ChoixPeriode
+        <button type="button" class="bouton-principal bouton-compact" disabled="@_enCours" @onclick="RegenererAsync">
+            @(_enCours ? "Regénération…" : "Regénérer la liste")
+        </button>
+    </details>
 }
 
 @if (_liste is { } liste && (liste.Liste.EstGeneree || liste.Articles.Count > 0))
@@ -141,6 +136,101 @@ else if (_liste is null || !_liste.Liste.EstGeneree)
     {
         _liste = await DepotListe.TrouverActiveAsync();
         _charge = true;
+
+        // Une liste générée propose sa propre période pour la regénérer.
+        if (_liste?.Liste is { DateDebut: { } debut, DateFin: { } fin })
+        {
+            _debut = debut;
+            _fin = fin;
+        }
+    }
+
+    /// <summary>Raccourcis de semaine et dates, communs à la génération et à la regénération.</summary>
+    private RenderFragment ChoixPeriode => __builder =>
+    {
+        <div class="suggestions-rapides">
+            <button type="button" class="bouton-secondaire bouton-mini" @onclick="() => ChoisirSemaine(_semaineCourante)">
+                Cette semaine (@_semaineCourante.Libelle)
+            </button>
+            <button type="button" class="bouton-secondaire bouton-mini" @onclick="() => ChoisirSemaine(_semaineCourante.Suivante())">
+                Semaine prochaine (@_semaineCourante.Suivante().Libelle)
+            </button>
+        </div>
+        <div class="grille-2">
+            <div class="champ">
+                <label for="debut">Du</label>
+                <input id="debut" type="date" @bind="_debut" />
+            </div>
+            <div class="champ">
+                <label for="fin">Au</label>
+                <input id="fin" type="date" @bind="_fin" />
+            </div>
+        </div>
+    };
+
+    private async Task RegenererAsync()
+    {
+        _message = null;
+        if (_fin < _debut)
+        {
+            Afficher("La date de fin doit suivre la date de début.", erreur: true);
+            return;
+        }
+
+        _enCours = true;
+        try
+        {
+            var resultat = await DepotListe.RegenererAsync(_debut, _fin);
+            if (resultat.Statut == StatutRegeneration.AucuneListeGeneree)
+            {
+                Afficher("La liste n'existe plus ou n'a pas encore été générée : générez-la.", erreur: true);
+            }
+            else
+            {
+                Afficher(ResumerRegeneration(resultat), erreur: false);
+            }
+
+            await ChargerAsync();
+        }
+        finally
+        {
+            _enCours = false;
+        }
+    }
+
+    private static string ResumerRegeneration(ResultatRegeneration r)
+    {
+        static string Nombre(int n, string singulier, string pluriel) => $"{n} {(n > 1 ? pluriel : singulier)}";
+
+        var changements = new List<string>();
+        if (r.NbAjoutes > 0)
+        {
+            changements.Add(Nombre(r.NbAjoutes, "article ajouté", "articles ajoutés"));
+        }
+
+        if (r.NbRetires > 0)
+        {
+            changements.Add(Nombre(r.NbRetires, "article retiré", "articles retirés"));
+        }
+
+        if (r.NbMisAJour > 0)
+        {
+            changements.Add(Nombre(r.NbMisAJour, "article recalculé", "articles recalculés"));
+        }
+
+        var texte = $"Liste regénérée à partir de {Nombre(r.NbRepas, "repas", "repas")} : "
+            + (changements.Count == 0 ? "aucun article des repas." : string.Join(", ", changements) + ".");
+        if (r.NbDecoches > 0)
+        {
+            texte += $" {Nombre(r.NbDecoches, "article a été décoché", "articles ont été décochés")} parce qu'il en faut davantage.";
+        }
+
+        if (r.NbConserves > 0)
+        {
+            texte += $" {Nombre(r.NbConserves, "article manuel ou reporté est conservé", "articles manuels ou reportés sont conservés")}.";
+        }
+
+        return texte;
     }
 
     private void ChoisirSemaine(Semaine semaine)
