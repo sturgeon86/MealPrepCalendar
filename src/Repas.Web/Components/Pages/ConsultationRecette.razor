@@ -185,11 +185,5 @@ else
         return AffichageQuantite.Formater(quantite.Value, code);
     }
 
-    // Espaces insécables : « 1 h 25 » ne se coupe jamais en fin de ligne.
-    private static string Duree(int minutes) => minutes switch
-    {
-        < 60 => $"{minutes} min",
-        _ when minutes % 60 == 0 => $"{minutes / 60} h",
-        _ => $"{minutes / 60} h {minutes % 60:00}",
-    };
+    private static string Duree(int minutes) => AffichageDuree.Ecrire(minutes);
 }

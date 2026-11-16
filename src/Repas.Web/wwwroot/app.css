@@ -798,3 +798,19 @@ a.bouton-secondaire {
     margin: 0;
     white-space: pre-line;
 }
+
+/* --- Recherche de recettes --- */
+.resume-recherche {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 1rem;
+}
+
+.resume-recherche .aide {
+    margin: 0;
+}
+
+.filtres-recettes .champ {
+    flex: 1 1 10rem;
+}

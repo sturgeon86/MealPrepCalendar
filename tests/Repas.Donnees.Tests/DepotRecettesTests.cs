@@ -187,6 +187,127 @@ public sealed class DepotRecettesTests : IAsyncLifetime
         Assert.Equal("Déjeuner, Végétarien", recettes[1].Etiquettes);
     }
 
+    /// <summary>Trois recettes : crêpes (30 min), gaufres (50 min, sans lait), bol de céréales (sans temps, sans farine).</summary>
+    private async Task AjouterTroisRecettesAsync()
+    {
+        await _depot.AjouterAsync(Crepes(), _idMarie);
+        await _depot.AjouterAsync(
+            Crepes() with
+            {
+                Nom = "Gaufres légères",
+                TempsPreparationMin = 15,
+                TempsCuissonMin = 35,
+                Ingredients = [Crepes().Ingredients[0], Crepes().Ingredients[2]],
+                Etiquettes = ["Dessert"],
+            },
+            _idMarie);
+        await _depot.AjouterAsync(
+            Crepes() with
+            {
+                Nom = "Bol de céréales",
+                TempsPreparationMin = null,
+                TempsCuissonMin = null,
+                Ingredients = [Crepes().Ingredients[1]],
+                Etiquettes = ["Déjeuner"],
+            },
+            _idMarie);
+    }
+
+    private async Task<List<string>> NomsAsync(CriteresRechercheRecettes criteres) =>
+        (await _depot.RechercherAsync(criteres)).Select(r => r.Nom).ToList();
+
+    [Fact]
+    public async Task Rechercher_SansCritere_DonneToutesLesRecettes()
+    {
+        await AjouterTroisRecettesAsync();
+
+        Assert.Equal(["Bol de céréales", "Crêpes", "Gaufres légères"], await NomsAsync(CriteresRechercheRecettes.Aucun));
+    }
+
+    [Theory]
+    [InlineData("crepe")]   // sans accent ni pluriel complet
+    [InlineData("CRÊPES")]
+    [InlineData("rêp")]     // au milieu du nom
+    public async Task Rechercher_ParNom_IgnoreCasseEtAccents(string texte)
+    {
+        await AjouterTroisRecettesAsync();
+
+        Assert.Equal(["Crêpes"], await NomsAsync(new(Nom: texte)));
+    }
+
+    [Theory]
+    [InlineData("%")]
+    [InlineData("_")]
+    [InlineData("[a-z]")]
+    public async Task Rechercher_ParNom_LesCaracteresSpeciauxSontCherchesTelsQuels(string texte)
+    {
+        await AjouterTroisRecettesAsync();
+
+        Assert.Empty(await NomsAsync(new(Nom: texte)));
+    }
+
+    [Fact]
+    public async Task Rechercher_ParIngredient_TrouveLesRecettesQuiLeContiennent()
+    {
+        await AjouterTroisRecettesAsync();
+
+        Assert.Equal(["Crêpes", "Gaufres légères"], await NomsAsync(new(Ingredient: "farine")));
+        Assert.Equal(["Bol de céréales", "Crêpes"], await NomsAsync(new(Ingredient: "LAIT")));
+    }
+
+    [Fact]
+    public async Task Rechercher_ParIngredient_TrouveAussiParSynonyme()
+    {
+        await AjouterTroisRecettesAsync();
+        await _baseDeTest.ExecuterAsync(
+            $"INSERT INTO dbo.IngredientSynonyme (IngredientId, Synonyme) VALUES ({_farine}, N'Fleur de blé');");
+
+        Assert.Equal(["Crêpes", "Gaufres légères"], await NomsAsync(new(Ingredient: "fleur de ble")));
+    }
+
+    [Fact]
+    public async Task Rechercher_ParEtiquette_SansEgardALaCasse()
+    {
+        await AjouterTroisRecettesAsync();
+
+        Assert.Equal(["Bol de céréales", "Crêpes"], await NomsAsync(new(Etiquette: "déjeuner")));
+        Assert.Equal(["Gaufres légères"], await NomsAsync(new(Etiquette: "Dessert")));
+        Assert.Empty(await NomsAsync(new(Etiquette: "Dé")));  // nom exact, pas une partie
+    }
+
+    [Fact]
+    public async Task Rechercher_ParTempsTotal_ExclutLesRecettesSansTemps()
+    {
+        await AjouterTroisRecettesAsync();
+
+        Assert.Equal(["Crêpes"], await NomsAsync(new(TempsTotalMaxMin: 30)));   // 30 min tout juste
+        Assert.Equal(["Crêpes", "Gaufres légères"], await NomsAsync(new(TempsTotalMaxMin: 60)));
+        Assert.Empty(await NomsAsync(new(TempsTotalMaxMin: 15)));
+    }
+
+    [Fact]
+    public async Task Rechercher_LesCriteresSeCumulent()
+    {
+        await AjouterTroisRecettesAsync();
+
+        Assert.Equal(["Crêpes"], await NomsAsync(new(Ingredient: "lait", Etiquette: "Déjeuner", TempsTotalMaxMin: 60)));
+        Assert.Empty(await NomsAsync(new(Nom: "gaufres", Ingredient: "lait")));
+    }
+
+    [Fact]
+    public async Task Rechercher_ApresUneFusion_TrouveParLeNouvelIngredient()
+    {
+        await AjouterTroisRecettesAsync();
+        var ingredients = new DepotIngredients(new BaseDeDonnees(_baseDeTest.ChaineConnexion));
+        var sucre = (await ingredients.RechercherAsync("Sucre blanc")).Single(i => i.Nom == "Sucre blanc").Id;
+
+        // Le sel des crêpes et des gaufres devient du sucre blanc (la fusion remplace l'ingrédient dans les recettes).
+        await ingredients.FusionnerAsync(_sel, sucre);
+
+        Assert.Equal(["Crêpes", "Gaufres légères"], await NomsAsync(new(Ingredient: "sucre blanc")));
+        Assert.Empty(await NomsAsync(new(Ingredient: "sel")));
+    }
+
     [Fact]
     public async Task UneEcritureEnEchec_NeLaisseAucuneRecetteAMoitie()
     {

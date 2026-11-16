@@ -1,7 +1,9 @@
 @page "/recettes"
+@implements IDisposable
 @using Repas.Domaine.Recettes
 @using Repas.Donnees
 @inject DepotRecettes DepotRecettes
+@inject NavigationManager Navigation
 
 <PageTitle>Recettes</PageTitle>
 
@@ -12,45 +14,202 @@
     </div>
 </div>
 
-@if (_recettes is null)
+@* Les filtres vivent dans l'adresse : en revenant d'une fiche, la recherche est intacte. *@
+<div class="filtres filtres-recettes">
+    <div class="champ">
+        <label for="nom">Nom</label>
+        <input id="nom" type="search" placeholder="Ex. : crêpes" autocomplete="off"
+               value="@_nom" @oninput="e => SurSaisie(e, v => _nom = v)" />
+    </div>
+    <div class="champ">
+        <label for="ingredient">Ingrédient</label>
+        <input id="ingredient" type="search" placeholder="Ex. : poulet" autocomplete="off"
+               value="@_ingredient" @oninput="e => SurSaisie(e, v => _ingredient = v)" />
+    </div>
+    <div class="champ">
+        <label for="etiquette">Étiquette</label>
+        <select id="etiquette" @bind="_etiquette" @bind:after="Appliquer">
+            <option value="">Toutes</option>
+            @foreach (var etiquette in _etiquettes)
+            {
+                <option value="@etiquette">@etiquette</option>
+            }
+        </select>
+    </div>
+    <div class="champ">
+        <label for="temps">Temps total</label>
+        <select id="temps" @bind="_tempsMax" @bind:after="Appliquer">
+            <option value="">Peu importe</option>
+            @foreach (var minutes in ChoixTemps)
+            {
+                <option value="@minutes">@LibelleTemps(minutes)</option>
+            }
+        </select>
+    </div>
+</div>
+
+@if (_resultats is null)
 {
     <p>Chargement…</p>
 }
-else if (_recettes.Count == 0)
+else if (_resultats.Count == 0 && _criteresCharges.EstVide)
 {
     <p class="aide">Le livre de recettes est vide. Ajoutez une première recette.</p>
 }
 else
 {
-    <ul class="liste-cartes">
-        @foreach (var recette in _recettes)
+    <div class="resume-recherche">
+        <p class="aide" role="status">
+            @(_resultats.Count == 0 ? "Aucune recette ne correspond." : $"{_resultats.Count} recette{(_resultats.Count > 1 ? "s" : "")}")
+        </p>
+        @if (!_criteresCharges.EstVide)
         {
-            <li @key="recette.Id" class="ligne-recette">
-                @if (recette.PhotoChemin is not null)
-                {
-                    <img class="vignette-recette" src="photos/@recette.PhotoChemin" alt="" loading="lazy" />
-                }
-                else
-                {
-                    <span class="vignette-recette vignette-vide" aria-hidden="true"></span>
-                }
-                <div class="infos-ligne">
-                    <a class="nom-ligne" href="recettes/@recette.Id">@recette.Nom</a>
-                    <span class="details-ligne">
-                        @recette.Portions portion(s)@(recette.TempsTotalMin is { } temps ? $" · {temps} min" : "")
-                    </span>
-                    @if (recette.Etiquettes.Length > 0)
-                    {
-                        <span class="details-ligne">@recette.Etiquettes</span>
-                    }
-                </div>
-            </li>
+            <button type="button" class="bouton-lien-texte" @onclick="Effacer">Effacer les filtres</button>
         }
-    </ul>
+    </div>
+
+    @if (_resultats.Count > 0)
+    {
+        <ul class="liste-cartes">
+            @foreach (var recette in _resultats)
+            {
+                <li @key="recette.Id" class="ligne-recette">
+                    @if (recette.PhotoChemin is not null)
+                    {
+                        <img class="vignette-recette" src="photos/@recette.PhotoChemin" alt="" loading="lazy" />
+                    }
+                    else
+                    {
+                        <span class="vignette-recette vignette-vide" aria-hidden="true"></span>
+                    }
+                    <div class="infos-ligne">
+                        <a class="nom-ligne" href="recettes/@recette.Id">@recette.Nom</a>
+                        <span class="details-ligne">
+                            @recette.Portions portion@(recette.Portions > 1 ? "s" : "")@(recette.TempsTotalMin is { } temps ? $" · {AffichageDuree.Ecrire(temps)}" : "")
+                        </span>
+                        @if (recette.Etiquettes.Length > 0)
+                        {
+                            <span class="details-ligne">@recette.Etiquettes</span>
+                        }
+                    </div>
+                </li>
+            }
+        </ul>
+    }
 }
 
 @code {
-    private List<ResumeRecette>? _recettes;
+    private static readonly int[] ChoixTemps = [15, 30, 45, 60, 90, 120];
 
-    protected override async Task OnInitializedAsync() => _recettes = await DepotRecettes.ListerAsync();
+    private List<ResumeRecette>? _resultats;
+    private List<string> _etiquettes = [];
+    private CancellationTokenSource? _attente;
+    private int _versionChargement;
+
+    // Valeurs des champs, pendant la saisie.
+    private string _nom = string.Empty;
+    private string _ingredient = string.Empty;
+    private string _etiquette = string.Empty;
+    private int? _tempsMax;
+
+    /// <summary>Les critères de l'adresse actuelle, ceux des résultats affichés.</summary>
+    private CriteresRechercheRecettes _criteresCharges = CriteresRechercheRecettes.Aucun;
+
+    /// <summary>Les derniers critères envoyés dans l'adresse par cette page.</summary>
+    private CriteresRechercheRecettes? _criteresEnvoyes;
+
+    [SupplyParameterFromQuery(Name = "nom")]
+    public string? NomFiltre { get; set; }
+
+    [SupplyParameterFromQuery(Name = "ingredient")]
+    public string? IngredientFiltre { get; set; }
+
+    [SupplyParameterFromQuery(Name = "etiquette")]
+    public string? EtiquetteFiltre { get; set; }
+
+    [SupplyParameterFromQuery(Name = "temps")]
+    public int? TempsFiltre { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _etiquettes = await DepotRecettes.ListerEtiquettesAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var criteres = new CriteresRechercheRecettes(
+            Vide(NomFiltre), Vide(IngredientFiltre), Vide(EtiquetteFiltre), TempsFiltre is > 0 ? TempsFiltre : null);
+
+        // L'adresse a changé sans passer par les champs (lien « Recettes » de l'en-tête, page ouverte avec des filtres) :
+        // les champs reprennent les critères de l'adresse. Sinon, on ne touche pas aux champs, où la frappe continue.
+        if (criteres != _criteresEnvoyes)
+        {
+            _nom = criteres.Nom ?? string.Empty;
+            _ingredient = criteres.Ingredient ?? string.Empty;
+            _etiquette = criteres.Etiquette ?? string.Empty;
+            _tempsMax = criteres.TempsTotalMaxMin;
+            _criteresEnvoyes = criteres;
+        }
+
+        // Seule la dernière recherche lancée s'affiche, même si une précédente répond après elle.
+        var version = ++_versionChargement;
+        var resultats = await DepotRecettes.RechercherAsync(criteres);
+        if (version == _versionChargement)
+        {
+            _resultats = resultats;
+            _criteresCharges = criteres;
+        }
+    }
+
+    // Les champs de texte attendent une courte pause dans la frappe avant de lancer la recherche.
+    private async Task SurSaisie(ChangeEventArgs e, Action<string> affecter)
+    {
+        affecter(e.Value?.ToString() ?? string.Empty);
+        _attente?.Cancel();
+        _attente?.Dispose();
+        _attente = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(300, _attente.Token);
+            Appliquer();
+        }
+        catch (TaskCanceledException)
+        {
+            // Une autre frappe a suivi : c'est elle qui lancera la recherche.
+        }
+    }
+
+    private void Appliquer()
+    {
+        var criteres = new CriteresRechercheRecettes(Vide(_nom), Vide(_ingredient), Vide(_etiquette), _tempsMax);
+        _criteresEnvoyes = criteres;
+        Navigation.NavigateTo(
+            Navigation.GetUriWithQueryParameters(new Dictionary<string, object?>
+            {
+                ["nom"] = criteres.Nom,
+                ["ingredient"] = criteres.Ingredient,
+                ["etiquette"] = criteres.Etiquette,
+                ["temps"] = criteres.TempsTotalMaxMin,
+            }),
+            replace: true);
+    }
+
+    private void Effacer()
+    {
+        _attente?.Cancel();
+        _nom = _ingredient = _etiquette = string.Empty;
+        _tempsMax = null;
+        Appliquer();
+    }
+
+    /// <summary>Un texte blanc ne filtre rien et disparaît de l'adresse.</summary>
+    private static string? Vide(string? texte) => string.IsNullOrWhiteSpace(texte) ? null : texte;
+
+    private static string LibelleTemps(int minutes) => $"{AffichageDuree.Ecrire(minutes)} ou moins";
+
+    public void Dispose()
+    {
+        _attente?.Cancel();
+        _attente?.Dispose();
+    }
 }

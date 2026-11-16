@@ -49,8 +49,7 @@ public sealed class DepotIngredients : DepotBase
             ORDER BY i.Nom;
             """;
 
-        var nettoye = texte?.Trim();
-        var motif = string.IsNullOrEmpty(nettoye) ? null : "%" + EchapperLike(nettoye) + "%";
+        var motif = MotifContient(texte);
 
         return ListerAsync(
             session,
@@ -327,11 +326,4 @@ public sealed class DepotIngredients : DepotBase
         .AjouterDecimal("@poidsMoyen", 10, 2, fiche.PoidsMoyenUniteG)
         .Ajouter("@estAlimentaire", SqlDbType.Bit, fiche.EstAlimentaire)
         .Ajouter("@actif", SqlDbType.Bit, fiche.Actif);
-
-    /// <summary>Neutralise les caractères spéciaux de LIKE pour chercher le texte tel quel.</summary>
-    private static string EchapperLike(string texte) => texte
-        .Replace(@"\", @"\\", StringComparison.Ordinal)
-        .Replace("%", @"\%", StringComparison.Ordinal)
-        .Replace("_", @"\_", StringComparison.Ordinal)
-        .Replace("[", @"\[", StringComparison.Ordinal);
 }

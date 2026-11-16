@@ -12,25 +12,52 @@ public sealed class DepotRecettes : DepotBase
     }
 
     /// <summary>Toutes les recettes, par nom.</summary>
-    public Task<List<ResumeRecette>> ListerAsync(SessionSql? session = null, CancellationToken annulation = default)
+    public Task<List<ResumeRecette>> ListerAsync(SessionSql? session = null, CancellationToken annulation = default) =>
+        RechercherAsync(CriteresRechercheRecettes.Aucun, session, annulation);
+
+    /// <summary>Les recettes qui répondent à tous les critères, par nom.</summary>
+    public Task<List<ResumeRecette>> RechercherAsync(
+        CriteresRechercheRecettes criteres, SessionSql? session = null, CancellationToken annulation = default)
     {
+        // Chaque filtre est neutralisé par un paramètre NULL. OPTION (RECOMPILE) : le plan est refait selon
+        // les filtres réellement utilisés, plutôt que de réutiliser celui d'une autre combinaison.
         const string sql = """
-            SELECT r.Id, r.Nom, r.Portions,
-                   CASE WHEN r.TempsPreparationMin IS NULL AND r.TempsCuissonMin IS NULL THEN NULL
-                        ELSE ISNULL(r.TempsPreparationMin, 0) + ISNULL(r.TempsCuissonMin, 0) END,
+            SELECT r.Id, r.Nom, r.Portions, t.TempsTotal,
                    ISNULL((SELECT STRING_AGG(e.Nom, N', ') WITHIN GROUP (ORDER BY e.Nom)
                            FROM dbo.RecetteEtiquette re JOIN dbo.Etiquette e ON e.Id = re.EtiquetteId
                            WHERE re.RecetteId = r.Id), N''),
                    r.PhotoChemin
             FROM dbo.Recette r
-            ORDER BY r.Nom, r.Id;
+            CROSS APPLY (SELECT CASE WHEN r.TempsPreparationMin IS NULL AND r.TempsCuissonMin IS NULL THEN NULL
+                                     ELSE ISNULL(r.TempsPreparationMin, 0) + ISNULL(r.TempsCuissonMin, 0) END) t (TempsTotal)
+            WHERE (@nom IS NULL OR r.Nom COLLATE French_CI_AI LIKE @nom ESCAPE N'\')
+              AND (@etiquette IS NULL
+                   OR EXISTS (SELECT 1 FROM dbo.RecetteEtiquette re JOIN dbo.Etiquette e ON e.Id = re.EtiquetteId
+                              WHERE re.RecetteId = r.Id AND e.Nom = @etiquette))
+              AND (@ingredient IS NULL
+                   OR EXISTS (SELECT 1 FROM dbo.RecetteIngredient ri JOIN dbo.Ingredient i ON i.Id = ri.IngredientId
+                              WHERE ri.RecetteId = r.Id
+                                AND (i.Nom COLLATE French_CI_AI LIKE @ingredient ESCAPE N'\'
+                                     OR EXISTS (SELECT 1 FROM dbo.IngredientSynonyme s
+                                                WHERE s.IngredientId = i.Id
+                                                  AND s.Synonyme COLLATE French_CI_AI LIKE @ingredient ESCAPE N'\'))))
+              AND (@tempsMax IS NULL OR t.TempsTotal <= @tempsMax)
+            ORDER BY r.Nom, r.Id
+            OPTION (RECOMPILE);
             """;
+
+        var etiquette = string.IsNullOrWhiteSpace(criteres.Etiquette) ? null : criteres.Etiquette.Trim();
         return ListerAsync(
             session,
             sql,
             l => new ResumeRecette(l.GetInt32(0), l.GetString(1), l.GetInt32(2), l.IsDBNull(3) ? null : l.GetInt32(3), l.GetString(4),
                 l.IsDBNull(5) ? null : l.GetString(5)),
-            annulation: annulation);
+            p => p
+                .Ajouter("@nom", SqlDbType.NVarChar, 500, MotifContient(criteres.Nom))
+                .Ajouter("@ingredient", SqlDbType.NVarChar, 500, MotifContient(criteres.Ingredient))
+                .Ajouter("@etiquette", SqlDbType.NVarChar, ValidationRecette.LongueurMaxEtiquette, etiquette)
+                .Ajouter("@tempsMax", SqlDbType.Int, criteres.TempsTotalMaxMin),
+            annulation);
     }
 
     /// <summary>Noms de toutes les étiquettes existantes, pour les suggérer à la saisie.</summary>

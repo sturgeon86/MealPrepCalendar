@@ -83,6 +83,26 @@ public abstract class DepotBase
     protected static bool EstViolationUnicite(SqlException ex, string nomContrainte) =>
         ex.Number is 2627 or 2601 && ex.Message.Contains(nomContrainte, StringComparison.Ordinal);
 
+    /// <summary>
+    /// Motif LIKE « contient » pour <c>LIKE @motif ESCAPE N'\'</c>, le texte étant cherché tel quel
+    /// (%, _ et [ neutralisés) ; <c>null</c> si le texte est vide, pour désactiver le filtre.
+    /// </summary>
+    protected static string? MotifContient(string? texte)
+    {
+        var nettoye = texte?.Trim();
+        if (string.IsNullOrEmpty(nettoye))
+        {
+            return null;
+        }
+
+        var echappe = nettoye
+            .Replace(@"\", @"\\", StringComparison.Ordinal)
+            .Replace("%", @"\%", StringComparison.Ordinal)
+            .Replace("_", @"\_", StringComparison.Ordinal)
+            .Replace("[", @"\[", StringComparison.Ordinal);
+        return "%" + echappe + "%";
+    }
+
     private async Task<T> AvecSessionAsync<T>(
         SessionSql? session, Func<SessionSql, Task<T>> requete, CancellationToken annulation)
     {
