@@ -20,6 +20,13 @@ public sealed class ConvertisseurUnites
         _unites = unites.ToDictionary(u => u.Id);
     }
 
+    /// <summary>L'unité de ce numéro, ou <c>null</c> si elle n'est pas dans le référentiel.</summary>
+    public Unite? Trouver(int uniteId) => _unites.GetValueOrDefault(uniteId);
+
+    /// <summary>L'unité de base d'un type de mesure (facteur 1 : g, ml ou unité), ou <c>null</c> si le référentiel n'en a pas.</summary>
+    public Unite? UniteDeBase(TypeMesure type) =>
+        _unites.Values.Where(u => u.TypeMesure == type && u.FacteurVersReference == 1m).OrderBy(u => u.Id).FirstOrDefault();
+
     /// <summary>Convertit vers l'unité de référence de l'ingrédient (celle de la liste d'épicerie).</summary>
     public ResultatConversion VersReference(decimal quantite, int uniteSourceId, MesuresIngredient ingredient)
     {

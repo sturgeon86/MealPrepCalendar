@@ -70,7 +70,7 @@ L'app tourne sur Unraid en réseau local seulement (`http://192.168.1.10:8096`, 
 ## Itération 5 — Liste d'épicerie
 - [x] **5.1 Tables** `ListeEpicerie`, `ListeEpicerieArticle`, `ListeEpicerieArticleSource` (contrainte : une seule liste active).
   - *Décidé :* une liste peut exister sans période (la prochaine liste, qui reçoit les articles reportés avant d'être générée) ; un repas retiré du calendrier emporte sa trace dans les sources ; la fusion d'ingrédients reporte aussi les articles des listes.
-- [ ] **5.2 Calcul de la liste** dans `Repas.Domaine` : portions, conversions, sommes, nombre de recettes, lignes séparées si conversion impossible.
+- [x] **5.2 Calcul de la liste** dans `Repas.Domaine` : portions, conversions, sommes, nombre de recettes, lignes séparées si conversion impossible.
   - *Critères :* tests unitaires sur des scénarios réalistes (ex. : 3 recettes de poulet, lait en ml et en tasses, farine sans densité).
 - [ ] **5.3 Générer la liste** à partir d'une période du calendrier.
 - [ ] **5.4 Regénérer** : recalcule les articles venant des repas, conserve les articles manuels, reportés et les cases cochées.
