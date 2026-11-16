@@ -31,6 +31,7 @@ builder.Services.AddSingleton<DepotCategories>();
 builder.Services.AddSingleton<DepotUnites>();
 builder.Services.AddSingleton<DepotIngredients>();
 builder.Services.AddSingleton<DepotRecettes>();
+builder.Services.AddSingleton<DepotCalendrier>();
 
 // Photos des recettes : volume /data/photos dans l'image Docker, sinon un dossier local ignoré par git.
 var dossierPhotos = builder.Configuration["Photos:Chemin"];
