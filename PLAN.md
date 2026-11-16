@@ -84,11 +84,6 @@ L'app tourne sur Unraid en réseau local seulement (`http://192.168.1.10:8096`, 
 - [x] **6.3 Terminer la liste** : affiche les articles non cochés, permet de les reporter (tous ou un par un) sur la prochaine liste.
   - *Critères :* les articles reportés portent la mention *(reporté)* et ne disparaissent pas à la regénération.
 
-## Itération 7 (suite) — Sauvegarde
-Les stories 7.1 à 7.3 sont plus haut, après l'itération 1.
-- [ ] **7.4 Sauvegarde** : script de sauvegarde de la base et du dossier des photos.
-  - *Critères :* en place avant de saisir de vraies données dans l'app.
-
 ---
 
 # Phase 2 — Supermarchés et rabais
@@ -99,10 +94,32 @@ Les stories 7.1 à 7.3 sont plus haut, après l'itération 1.
 - [ ] Copier une semaine du calendrier
 
 # Phase 3 — Import de recettes
-- [ ] Conteneur Ollama sur Unraid avec le GPU (plugin Nvidia Driver), modèle `qwen3-vl:8b`
-- [ ] Photo → OCR → recette en JSON → écran de validation (ingrédients rapprochés du référentiel par nom et synonymes)
-- [ ] Import depuis un site web (lecture des données structurées `schema.org/Recipe` quand le site en fournit)
+Les trois façons d'importer (texte collé, site web, photo) produisent le même **brouillon de recette**, validé dans le même écran
+avant l'enregistrement. On construit donc d'abord ce qui est commun (lecture d'une ligne d'ingrédient, rapprochement avec le
+référentiel, écran de validation), puis les sources, de la plus simple à la plus exigeante. Aucune bibliothèque à ajouter :
+`HttpClient` et `System.Text.Json` suffisent (Ollama et les données `schema.org` parlent JSON).
+
+## Itération 8 — Import de recettes
+- [ ] **8.1 Lire une ligne d'ingrédient** (domaine) : « 1 ½ tasse de farine tout usage, tamisée » → quantité, unité, nom, précision.
+  - *Critères :* tests sur des lignes réelles : fractions, unités au pluriel et abrégées (« tasses », « c. à s. », « c. à thé », « ml », « lb »), unités anglaises courantes (« cup », « tbsp »), « au goût », « 2 oignons », « 1 boîte (540 ml) de pois chiches ».
+- [ ] **8.2 Rapprocher un nom du référentiel** (domaine) : par nom et synonyme, sans égard à la casse, aux accents ni au pluriel (« oignons jaunes » → *Oignon jaune*) ; sinon des suggestions proches, ou « à créer ».
+  - *Critères :* tests de rapprochement exact, approché et sans correspondance ; aucun choix silencieux quand deux ingrédients conviennent.
+- [ ] **8.3 Écran de validation d'un brouillon** : nom, portions, temps, étapes et ingrédients pré-remplis ; pour chaque ingrédient, le rapprochement proposé à confirmer, à changer ou à créer (création rapide) ; puis enregistrement comme une recette normale. Première source : **coller le texte** d'une recette (une ligne par ingrédient).
+  - *Critères :* rien n'est enregistré avant la validation ; une ligne non rapprochée bloque l'enregistrement avec un message clair ; la recette garde sa source.
+- [ ] **8.4 Import depuis un site web** : on colle l'adresse ; l'app lit les données `schema.org/Recipe` de la page (JSON-LD), y compris dans un `@graph` ; temps ISO 8601 (`PT1H30M`), portions (« 4 portions »), étapes en sections ; photo téléchargée dans le dossier des photos ; adresse d'origine gardée sur la recette (migration : `Recette.SourceUrl`).
+  - *Critères :* tests sur des pages enregistrées de quelques sites québécois ; message clair si la page n'a pas de données de recette ; seulement `http`/`https`, délai et taille maximale ; jamais d'adresse du réseau local (le serveur ne doit pas servir de relais vers le réseau de la maison).
+- [ ] **8.5 Ollama sur Unraid** : conteneur avec le GPU (plugin *Nvidia Driver*), modèle `qwen3-vl:8b` (plan B : `qwen2.5vl:7b`), documenté dans le README ; adresse dans `Ollama__Url` ; page de diagnostic dans l'app (Ollama joignable, modèle présent).
+  - *Critères :* l'app fonctionne normalement sans Ollama (l'import par photo est simplement indisponible, avec un message).
+- [ ] **8.6 Import par photo** : une ou plusieurs photos (recette sur deux pages) → Ollama, avec un schéma JSON imposé à la réponse (nom, portions, temps, ingrédients en texte, étapes) → brouillon → écran de validation. Les lignes d'ingrédients passent par 8.1 et 8.2, comme les autres sources.
+  - *Critères :* indicateur d'attente (l'analyse peut prendre une minute), délai maximal, réponse invalide signalée sans planter ; la photo peut devenir celle de la recette.
 
 # Phase 4 — Inventaire
 - [ ] Table `Inventaire` et écran de gestion du garde-manger
 - [ ] Déduire le stock de la liste d'épicerie générée
+
+---
+
+# Avant les vraies données — Sauvegarde
+Déplacée à la fin à la demande (2026-11-16) : à faire avant de saisir de vraies recettes dans l'app.
+- [ ] **7.4 Sauvegarde** : script de sauvegarde de la base et du dossier des photos.
+  - *Critères :* en place avant de saisir de vraies données dans l'app.
