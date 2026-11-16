@@ -172,7 +172,19 @@ public static partial class LectureLigneIngredient
                 reste = RetirerLiaison(reste[contenant.Length..]);
                 var mot = contenant.Groups["mot"].Value;
                 var mesure = parentheses.Select((p, i) => (Mesure: LireMesure(p), Index: i)).FirstOrDefault(m => m.Mesure is not null);
-                if (mesure.Mesure is var (quantiteContenant, codeContenant))
+                var apresMesure = reste;
+                if (LireQuantite(ref apresMesure, out var intervalleMesure) is { } quantiteEcrite && intervalleMesure is null
+                    && TrouverUnite(apresMesure) is { Code: not CodeUnitePiece } uniteEcrite)
+                {
+                    // « 1 boîte de 540 ml de maïs » : la mesure suit le contenant (elle passe avant une parenthèse,
+                    // souvent la même mesure dans l'autre système : « (19 oz) »).
+                    var texteMesure = reste[..(reste.Length - apresMesure.Length + uniteEcrite.Longueur)].Trim();
+                    precisions.Add($"{AnalyseQuantite.Ecrire(quantite)} {mot} de {texteMesure}");
+                    reste = RetirerLiaison(apresMesure[uniteEcrite.Longueur..]);
+                    quantite *= quantiteEcrite;
+                    codeUnite = uniteEcrite.Code;
+                }
+                else if (mesure.Mesure is var (quantiteContenant, codeContenant))
                 {
                     // « 2 boîtes (540 ml) » : 1080 ml, et la précision garde la façon de l'acheter.
                     precisions.Add($"{AnalyseQuantite.Ecrire(quantite)} {mot} ({parentheses[mesure.Index]})");

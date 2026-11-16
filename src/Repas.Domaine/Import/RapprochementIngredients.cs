@@ -213,7 +213,20 @@ public sealed class RapprochementIngredients
         var score = 2m * communs / (lus.Count + connus.Count);
 
         // Une faute de frappe rapproche, mais n'est jamais un nom identique.
-        return score == 1m && !identiques ? 0.95m : score;
+        if (score == 1m && !identiques)
+        {
+            return 0.95m;
+        }
+
+        // Tous les mots de l'ingrédient sont dans le nom lu, qui en a d'autres : « pommes de terre Russet ou Yukon
+        // Gold pelées » contient « pomme de terre ». Plus l'ingrédient a de mots, plus la proposition est sûre ;
+        // « pomme de terre » passe donc avant « pomme ».
+        if (connus.Count < lus.Count && connus.All(lus.Contains))
+        {
+            score = Math.Max(score, 0.5m + (0.45m * connus.Count / lus.Count));
+        }
+
+        return score;
     }
 
     private static bool PresqueEgal(string a, string b)

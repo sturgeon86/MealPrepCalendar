@@ -116,7 +116,14 @@ else
             </section>
         }
 
-        @if (_recette.Source != SourceRecette.Manuelle)
+        @if (_recette.SourceUrl is { } sourceUrl && Uri.TryCreate(sourceUrl, UriKind.Absolute, out var adresseSource))
+        {
+            <p class="aide">
+                Recette importée de
+                <a href="@adresseSource.AbsoluteUri" target="_blank" rel="noopener noreferrer nofollow">@adresseSource.Host</a>.
+            </p>
+        }
+        else if (_recette.Source != SourceRecette.Manuelle)
         {
             <p class="aide">@(_recette.Source switch
             {

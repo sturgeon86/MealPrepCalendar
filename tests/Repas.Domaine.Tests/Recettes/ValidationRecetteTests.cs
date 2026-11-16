@@ -25,6 +25,17 @@ public sealed class ValidationRecetteTests
     }
 
     [Fact]
+    public void AdresseDOrigineWeb_EstAcceptee() =>
+        Assert.Empty(ValidationRecette.Valider(Recette() with { SourceUrl = "https://www.exemple-recettes.ca/recettes/crepes/" }));
+
+    [Theory]
+    [InlineData("javascript:alert(1)")]
+    [InlineData("ftp://exemple.com/recette")]
+    [InlineData("pas une adresse")]
+    public void AdresseDOrigineInvalide_EstRefusee(string adresse) =>
+        Assert.Equal(["L'adresse d'origine de la recette n'est pas valide."], ValidationRecette.Valider(Recette() with { SourceUrl = adresse }));
+
+    [Fact]
     public void PhotoAuNomGenere_EstAcceptee()
     {
         Assert.Empty(ValidationRecette.Valider(Recette() with { PhotoChemin = PhotoRecette.NouveauNom(FormatPhoto.Jpeg) }));

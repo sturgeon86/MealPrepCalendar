@@ -114,6 +114,14 @@ public static class ValidationRecette
             erreurs.Add($"Une étiquette ne doit pas dépasser {LongueurMaxEtiquette} caractères.");
         }
 
+        if (recette.SourceUrl is { } source
+            && (source.Length > Import.AdresseImport.LongueurMax
+                || !Uri.TryCreate(source, UriKind.Absolute, out var adresse)
+                || (adresse.Scheme != Uri.UriSchemeHttp && adresse.Scheme != Uri.UriSchemeHttps)))
+        {
+            erreurs.Add("L'adresse d'origine de la recette n'est pas valide.");
+        }
+
         // Le nom est toujours généré par l'app ; un autre nom indique une erreur de programmation.
         if (recette.PhotoChemin is not null && !PhotoRecette.EstNomValide(recette.PhotoChemin))
         {

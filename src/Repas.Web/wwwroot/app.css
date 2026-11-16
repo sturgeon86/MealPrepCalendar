@@ -252,6 +252,14 @@ body {
     color: #14532d;
 }
 
+.message-avertissement {
+    margin: 0 0 1rem;
+    padding: 0.625rem 0.75rem;
+    border-radius: 0.375rem;
+    background: #fff8e6;
+    color: #744210;
+}
+
 .fiche {
     display: grid;
     grid-template-columns: max-content 1fr;

@@ -80,10 +80,26 @@ public sealed class DepotRecettesTests : IAsyncLifetime
 
         Assert.Equal(SourceRecette.Texte, (await _depot.TrouverAsync(id))?.Source);
 
-        // Une modification ne change pas la source.
+        // Une modification ne change pas la source (story 8.3) ni son adresse (story 8.4).
         var relue = (await _depot.TrouverAsync(id))!;
         await _depot.ModifierAsync(relue with { Nom = "Crêpes fines" });
         Assert.Equal(SourceRecette.Texte, (await _depot.TrouverAsync(id))?.Source);
+    }
+
+    [Fact]
+    public async Task RecetteImporteeDUnSite_GardeSonAdresse()
+    {
+        const string adresse = "https://www.exemple-recettes.ca/recettes/crepes/";
+        var id = await _depot.AjouterAsync(Crepes() with { Source = SourceRecette.Web, SourceUrl = adresse }, _idMarie);
+
+        var relue = (await _depot.TrouverAsync(id))!;
+        Assert.Equal((SourceRecette.Web, adresse), (relue.Source, relue.SourceUrl));
+
+        await _depot.ModifierAsync(relue with { Nom = "Crêpes fines" });
+        Assert.Equal(adresse, (await _depot.TrouverAsync(id))?.SourceUrl);
+
+        var sansAdresse = await _depot.AjouterAsync(Crepes(), _idMarie);
+        Assert.Null((await _depot.TrouverAsync(sansAdresse))?.SourceUrl);
     }
 
     [Fact]

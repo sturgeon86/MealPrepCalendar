@@ -8,6 +8,8 @@ namespace Repas.Domaine.Import;
 /// </summary>
 /// <param name="Portions">Absentes si la source ne les donne pas.</param>
 /// <param name="Notes">Le texte qui n'est ni un ingrédient ni une étape (une introduction, par exemple).</param>
+/// <param name="SourceUrl">L'adresse de la page d'où vient la recette (import web).</param>
+/// <param name="PhotoUrl">L'adresse de la photo de la recette, à télécharger (import web).</param>
 public sealed record BrouillonRecette(
     string Nom,
     int? Portions,
@@ -16,7 +18,9 @@ public sealed record BrouillonRecette(
     IReadOnlyList<string> Ingredients,
     IReadOnlyList<string> Etapes,
     string? Notes,
-    SourceRecette Source);
+    SourceRecette Source,
+    string? SourceUrl = null,
+    string? PhotoUrl = null);
 
 /// <summary>Une ligne d'ingrédient du brouillon, lue et rapprochée du référentiel.</summary>
 public sealed record IngredientImporte(LigneLue Lue, ResultatRapprochement Rapprochement);

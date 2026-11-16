@@ -106,6 +106,30 @@ public sealed class RapprochementIngredientsTests
     }
 
     [Fact]
+    public void Approche_TousLesMotsDeLIngredientSontDansLeNomLu()
+    {
+        // Tel qu'écrit sur un grand site de recettes : des mots en trop, sans virgule pour les séparer.
+        var rapprochement = new RapprochementIngredients(
+        [
+            new(1, "Pomme", []),
+            new(2, "Pomme de terre", []),
+            new(3, "Patate douce", []),
+        ]);
+
+        var resultat = rapprochement.Rapprocher("pommes de terre Russet ou Yukon Gold pelées et coupées en cubes");
+
+        Assert.Equal(StatutRapprochement.Approche, resultat.Statut);
+        Assert.Equal(2, resultat.Propose?.IngredientId);
+        Assert.Equal(1, resultat.Suggestions[1].IngredientId);
+    }
+
+    [Fact]
+    public void Approche_UnQualificatifEnPlus()
+    {
+        Assert.Equal(4, Rapprochement.Rapprocher("boeuf haché maigre ou mi-maigre").Propose?.IngredientId);
+    }
+
+    [Fact]
     public void Ambigu_DeuxIngredientsConviennentAutant()
     {
         // « oignons » va aussi bien au jaune, au rouge qu'au vert : aucun choix silencieux.

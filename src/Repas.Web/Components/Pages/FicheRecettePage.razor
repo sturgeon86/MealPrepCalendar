@@ -7,6 +7,7 @@
 @using Repas.Domaine.Referentiel
 @using Repas.Donnees
 @using Repas.Donnees.Photos
+@using Repas.Donnees.Web
 @using Repas.Web.Authentification
 @using Repas.Web.Components.Recettes
 @inject DepotRecettes DepotRecettes
@@ -15,6 +16,7 @@
 @inject DepotCategories DepotCategories
 @inject DepotUnites DepotUnites
 @inject DepotIngredients DepotIngredients
+@inject TelechargementWeb TelechargementWeb
 @inject NavigationManager Navigation
 
 <PageTitle>@(_estImport ? "Importer une recette" : EstNouvelle ? "Nouvelle recette" : _nom.Length > 0 ? _nom : "Recette")</PageTitle>
@@ -44,8 +46,26 @@ else if (_estImport && !_brouillonLu)
         </div>
     }
 
+    <section class="carte-formulaire carte-large">
+        <h2>Depuis un site web</h2>
+        <p class="aide">
+            Collez l'adresse de la page de la recette. La plupart des sites de recettes (Ricardo, Coup de pouce,
+            5 ingredients 15 minutes…) publient la recette dans un format que l'app sait lire, avec sa photo.
+        </p>
+        <div class="champ">
+            <label for="adresse-recette">Adresse de la page</label>
+            <input id="adresse-recette" type="url" inputmode="url" autocomplete="off" placeholder="https://…"
+                   maxlength="@AdresseImport.LongueurMax" @bind="_adresseImport" @onkeyup="ImporterSiEntreeAsync" />
+        </div>
+        <div class="actions-page">
+            <button type="button" class="bouton-principal bouton-compact" disabled="@_enCours" @onclick="ImporterPageAsync">
+                @(_enCours ? "Lecture de la page…" : "Importer la page")
+            </button>
+        </div>
+    </section>
+
     <section class="carte-formulaire carte-large import-texte">
-        <h2>Coller le texte</h2>
+        <h2>Ou coller le texte</h2>
         <p class="aide">
             Collez la recette : le titre sur la première ligne, puis un ingrédient par ligne et les étapes.
             Les intertitres « Ingrédients » et « Préparation » aident la lecture. Rien n'est enregistré avant
@@ -75,8 +95,16 @@ else
                 <text> (surlignés ci-dessous). </text>
             }
             Vérifiez aussi les quantités et les étapes, puis enregistrez.
-            <button type="button" class="bouton-lien-texte" @onclick="() => _brouillonLu = false">Revenir au texte</button>
+            <button type="button" class="bouton-lien-texte" @onclick="() => _brouillonLu = false">Revenir à l'import</button>
         </p>
+        @if (_sourceUrl is not null)
+        {
+            <p class="aide">Source : <a href="@_sourceUrl" target="_blank" rel="noopener noreferrer nofollow">@_sourceUrl</a></p>
+        }
+        @if (_avertissementImport is not null)
+        {
+            <p class="message-avertissement" role="status">@_avertissementImport</p>
+        }
     }
 
     @if (_erreurs.Count > 0)
@@ -373,6 +401,11 @@ else
     private string _texteImport = string.Empty;
     private RapprochementIngredients? _rapprochement;
     private ModeleLigne? _ligneEnChangement;
+    private string _adresseImport = string.Empty;
+    private string? _avertissementImport;
+
+    // L'adresse de la page d'où vient la recette (import web) ; gardée telle quelle à la modification.
+    private string? _sourceUrl;
 
     private const string ExempleTexte =
         "Pâté chinois\nPortions : 6\n\nIngrédients\n1 lb de boeuf haché\n1 oignon, haché\n…\n\nPréparation\n1. Préchauffer le four…";
@@ -422,6 +455,8 @@ else
         _ligneEnChangement = null;
         _estImport = Navigation.ToBaseRelativePath(Navigation.Uri).StartsWith("recettes/importer", StringComparison.OrdinalIgnoreCase);
         _brouillonLu = false;
+        _avertissementImport = null;
+        _sourceUrl = null;
         _photoChemin = null;
         _nouvellePhoto = null;
         _apercuNouvellePhoto = null;
@@ -460,6 +495,7 @@ else
         _etapes = recette.Etapes.Select(t => new ModeleEtape { Texte = t }).ToList();
         _etiquettes = recette.Etiquettes.ToList();
         _photoChemin = recette.PhotoChemin;
+        _sourceUrl = recette.SourceUrl;
         _charge = true;
     }
 
@@ -515,12 +551,79 @@ else
         _enCours = true;
         try
         {
-            _rapprochement ??= new RapprochementIngredients(await DepotIngredients.ListerPourRapprochementAsync());
+            await AppliquerBrouillonAsync(brouillon);
         }
         finally
         {
             _enCours = false;
         }
+    }
+
+    private async Task ImporterSiEntreeAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !_enCours)
+        {
+            await ImporterPageAsync();
+        }
+    }
+
+    private async Task ImporterPageAsync()
+    {
+        _erreurs = [];
+        if (AdresseImport.Valider(_adresseImport, out var adresse) is { } probleme)
+        {
+            _erreurs = [probleme];
+            return;
+        }
+
+        _enCours = true;
+        try
+        {
+            var page = await TelechargementWeb.LirePageAsync(adresse!);
+            var brouillon = LectureRecetteWeb.Lire(page.Html, page.Adresse);
+            if (brouillon is null || brouillon.Ingredients.Count == 0)
+            {
+                _erreurs = ["Cette page ne contient pas de données de recette que l'app sait lire. Copiez plutôt le texte de la recette dans « Ou coller le texte »."];
+                return;
+            }
+
+            await AppliquerBrouillonAsync(brouillon);
+
+            // La photo de la page devient celle de la recette ; sans elle, l'import continue.
+            if (brouillon.PhotoUrl is { } photoUrl)
+            {
+                try
+                {
+                    var photo = await TelechargementWeb.LireImageAsync(new Uri(photoUrl));
+                    var format = PhotoRecette.Verifier(photo);
+                    _nouvellePhoto = photo;
+                    _apercuNouvellePhoto = $"data:{PhotoRecette.TypeContenu(PhotoRecette.NouveauNom(format))};base64,{Convert.ToBase64String(photo)}";
+                    _photoRetiree = false;
+                }
+                catch (Exception ex) when (ex is ImportWebException or PhotoInvalideException or UriFormatException)
+                {
+                    _avertissementImport = $"La photo de la page n'a pas pu être récupérée : {ex.Message} Vous pouvez en choisir une.";
+                }
+            }
+        }
+        catch (ImportWebException ex)
+        {
+            _erreurs = [ex.Message];
+        }
+        finally
+        {
+            _enCours = false;
+        }
+    }
+
+    /// <summary>Remplit le formulaire avec le brouillon lu ; rien n'est enregistré.</summary>
+    private async Task AppliquerBrouillonAsync(BrouillonRecette brouillon)
+    {
+        _rapprochement ??= new RapprochementIngredients(await DepotIngredients.ListerPourRapprochementAsync());
+        _avertissementImport = null;
+        _sourceUrl = brouillon.SourceUrl is { Length: <= AdresseImport.LongueurMax } source ? source : null;
+        _nouvellePhoto = null;
+        _apercuNouvellePhoto = null;
 
         _nom = brouillon.Nom.Length > ValidationRecette.LongueurMaxNom ? brouillon.Nom[..ValidationRecette.LongueurMaxNom] : brouillon.Nom;
         _portions = brouillon.Portions is { } portions and >= 1 and <= ValidationRecette.PortionsMax ? portions : 4;
@@ -725,7 +828,8 @@ else
             lignes,
             ValidationRecette.NormaliserEtapes(_etapes.Select(e => e.Texte)),
             _etiquettes,
-            PhotoConservee);
+            PhotoConservee,
+            _sourceUrl);
 
         _erreurs.AddRange(ValidationRecette.Valider(recette));
         if (_erreurs.Count > 0)

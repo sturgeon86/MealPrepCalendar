@@ -28,6 +28,7 @@ public sealed record LigneIngredient(
 /// <param name="Portions">Nombre de portions que donnent les quantités.</param>
 /// <param name="Etiquettes">Noms des étiquettes (« Végétarien », « Souper rapide »…).</param>
 /// <param name="PhotoChemin">Nom du fichier dans le dossier des photos (voir <see cref="PhotoRecette"/>) ; <c>null</c> sans photo.</param>
+/// <param name="SourceUrl">Adresse de la page d'où la recette a été importée ; <c>null</c> sinon.</param>
 public sealed record FicheRecette(
     int Id,
     string Nom,
@@ -39,7 +40,8 @@ public sealed record FicheRecette(
     IReadOnlyList<LigneIngredient> Ingredients,
     IReadOnlyList<string> Etapes,
     IReadOnlyList<string> Etiquettes,
-    string? PhotoChemin = null);
+    string? PhotoChemin = null,
+    string? SourceUrl = null);
 
 /// <summary>Ligne de la liste des recettes.</summary>
 /// <param name="TempsTotalMin">Préparation et cuisson ; <c>null</c> si aucun des deux n'est connu.</param>

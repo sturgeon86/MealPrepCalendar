@@ -11,6 +11,7 @@ using Repas.Domaine.Utilisateurs;
 using Repas.Donnees;
 using Repas.Donnees.Migrations;
 using Repas.Donnees.Photos;
+using Repas.Donnees.Web;
 using Repas.Web.Authentification;
 using Repas.Web.Components;
 
@@ -52,6 +53,9 @@ if (string.IsNullOrWhiteSpace(dossierPhotos))
     dossierPhotos = Path.Combine(builder.Environment.ContentRootPath, "App_Data", "photos");
 }
 builder.Services.AddSingleton(new StockagePhotos(dossierPhotos));
+
+// Import de recettes depuis un site web : un seul client HTTP, protégé contre les adresses du réseau local.
+builder.Services.AddSingleton<TelechargementWeb>();
 builder.Services.AddSingleton<IHacheurMotDePasse, HacheurMotDePasse>();
 builder.Services.AddSingleton<ServiceConnexion>();
 builder.Services.AddSingleton<ServicePremierCompte>();

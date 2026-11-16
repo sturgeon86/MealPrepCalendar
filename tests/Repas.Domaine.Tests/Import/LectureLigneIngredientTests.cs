@@ -186,6 +186,18 @@ public sealed class LectureLigneIngredientTests
     }
 
     [Fact]
+    public void BoiteSuivieDeSaMesure()
+    {
+        // Tel qu'écrit sur un grand site de recettes québécois.
+        var ligne = Lire("1 boîte de 540 ml (19 oz) de maïs en crème");
+
+        Assert.Equal(540m, ligne.Quantite);
+        Assert.Equal("ml", ligne.CodeUnite);
+        Assert.Equal("maïs en crème", ligne.Nom);
+        Assert.Equal("1 boîte de 540 ml, 19 oz", ligne.Precision);
+    }
+
+    [Fact]
     public void BoiteSansMesureCompteLesPieces()
     {
         var ligne = Lire("1 boîte de pâte de tomates");

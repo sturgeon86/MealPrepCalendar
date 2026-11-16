@@ -1,5 +1,6 @@
 using System.Data;
 using Microsoft.Data.SqlClient;
+using Repas.Domaine.Import;
 using Repas.Domaine.Recettes;
 
 namespace Repas.Donnees;
@@ -70,7 +71,7 @@ public sealed class DepotRecettes : DepotBase
     public Task<FicheRecette?> TrouverAsync(int id, SessionSql? session = null, CancellationToken annulation = default)
     {
         const string sqlRecette = """
-            SELECT Id, Nom, Portions, TempsPreparationMin, TempsCuissonMin, Notes, Source, PhotoChemin
+            SELECT Id, Nom, Portions, TempsPreparationMin, TempsCuissonMin, Notes, Source, PhotoChemin, SourceUrl
             FROM dbo.Recette WHERE Id = @id;
             """;
         const string sqlIngredients = """
@@ -104,7 +105,8 @@ public sealed class DepotRecettes : DepotBase
                         Ingredients: [],
                         Etapes: [],
                         Etiquettes: [],
-                        PhotoChemin: l.IsDBNull(7) ? null : l.GetString(7)),
+                        PhotoChemin: l.IsDBNull(7) ? null : l.GetString(7),
+                        SourceUrl: l.IsDBNull(8) ? null : l.GetString(8)),
                     Id,
                     annulation);
                 if (recette is null)
@@ -138,9 +140,9 @@ public sealed class DepotRecettes : DepotBase
         FicheRecette recette, int creeParId, SessionSql? session = null, CancellationToken annulation = default)
     {
         const string sql = """
-            INSERT INTO dbo.Recette (Nom, Portions, TempsPreparationMin, TempsCuissonMin, Notes, Source, PhotoChemin, CreePar)
+            INSERT INTO dbo.Recette (Nom, Portions, TempsPreparationMin, TempsCuissonMin, Notes, Source, PhotoChemin, SourceUrl, CreePar)
             OUTPUT INSERTED.Id
-            VALUES (@nom, @portions, @tempsPreparation, @tempsCuisson, @notes, @source, @photo, @creePar);
+            VALUES (@nom, @portions, @tempsPreparation, @tempsCuisson, @notes, @source, @photo, @sourceUrl, @creePar);
             """;
 
         return DansTransactionAsync(
@@ -166,7 +168,7 @@ public sealed class DepotRecettes : DepotBase
         const string sql = """
             UPDATE dbo.Recette
             SET Nom = @nom, Portions = @portions, TempsPreparationMin = @tempsPreparation, TempsCuissonMin = @tempsCuisson,
-                Notes = @notes, Source = @source, PhotoChemin = @photo, DateModification = SYSUTCDATETIME()
+                Notes = @notes, Source = @source, PhotoChemin = @photo, SourceUrl = @sourceUrl, DateModification = SYSUTCDATETIME()
             OUTPUT DELETED.PhotoChemin
             WHERE Id = @id;
             """;
@@ -274,5 +276,6 @@ public sealed class DepotRecettes : DepotBase
         .Ajouter("@tempsCuisson", SqlDbType.Int, recette.TempsCuissonMin)
         .Ajouter("@notes", SqlDbType.NVarChar, -1, string.IsNullOrWhiteSpace(recette.Notes) ? null : recette.Notes.Trim())
         .Ajouter("@source", SqlDbType.VarChar, 10, recette.Source.ToString())
-        .Ajouter("@photo", SqlDbType.NVarChar, 260, recette.PhotoChemin);
+        .Ajouter("@photo", SqlDbType.NVarChar, 260, recette.PhotoChemin)
+        .Ajouter("@sourceUrl", SqlDbType.NVarChar, AdresseImport.LongueurMax, recette.SourceUrl);
 }
