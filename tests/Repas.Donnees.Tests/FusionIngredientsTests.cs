@@ -75,6 +75,27 @@ public sealed class FusionIngredientsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Fusionner_LesArticlesDesListesUtilisentLIngredientConserve()
+    {
+        var conserve = await IdAsync("Lait 2 %");
+        var doublon = await AjouterAsync("lait 2%");
+        await _baseDeTest.ExecuterAsync(
+            $"""
+            INSERT INTO dbo.Utilisateur (Courriel, NomAffiche, MotDePasseHash) VALUES (N'marie@exemple.com', N'Marie', N'hash');
+            INSERT INTO dbo.ListeEpicerie (Nom, CreePar) VALUES (N'Semaine', SCOPE_IDENTITY());
+            DECLARE @liste INT = SCOPE_IDENTITY();
+            INSERT INTO dbo.ListeEpicerieArticle (ListeId, IngredientId, QuantiteTotale, UniteId, EstManuel) VALUES
+                (@liste, {doublon}, 500, {_idMillilitre}, 1);
+            """);
+
+        await _depot.FusionnerAsync(doublon, conserve);
+
+        Assert.Equal(1, await _baseDeTest.ScalaireAsync<int>(
+            $"SELECT COUNT(*) FROM dbo.ListeEpicerieArticle WHERE IngredientId = {conserve} AND QuantiteTotale = 500 AND EstManuel = 1;"));
+        Assert.Equal(0, await _baseDeTest.ScalaireAsync<int>($"SELECT COUNT(*) FROM dbo.ListeEpicerieArticle WHERE IngredientId = {doublon};"));
+    }
+
+    [Fact]
     public async Task Fusionner_AucuneDonneeNEstPerdue()
     {
         var conserve = await IdAsync("Lait 2 %");

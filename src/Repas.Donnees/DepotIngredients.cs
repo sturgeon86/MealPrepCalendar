@@ -181,6 +181,7 @@ public sealed class DepotIngredients : DepotBase
         "Ingredient.FusionneDansId",
         "IngredientSynonyme.IngredientId",
         "RecetteIngredient.IngredientId",
+        "ListeEpicerieArticle.IngredientId",
     ];
 
     /// <summary>L'ingrédient qui remplace celui-ci, s'il a été fusionné ; sinon <c>null</c>.</summary>
@@ -199,7 +200,7 @@ public sealed class DepotIngredients : DepotBase
     /// <summary>
     /// Fusionne un doublon dans l'ingrédient conservé, dans une transaction : tout ce qui pointait vers
     /// le doublon pointe ensuite vers l'ingrédient conservé (synonymes, anciens doublons déjà fusionnés
-    /// dans celui-ci, lignes de recettes), puis le doublon est désactivé et garde le lien vers l'ingrédient conservé.
+    /// dans celui-ci, lignes de recettes, articles des listes d'épicerie), puis le doublon est désactivé et garde le lien vers l'ingrédient conservé.
     /// </summary>
     /// <returns>Le nombre de synonymes passés à l'ingrédient conservé.</returns>
     /// <exception cref="FusionImpossibleException">La fusion ne respecte pas <see cref="RegleFusion"/> ; rien n'est modifié.</exception>
@@ -212,6 +213,9 @@ public sealed class DepotIngredients : DepotBase
         const string sqlAnciensDoublons = "UPDATE dbo.Ingredient SET FusionneDansId = @conserveId WHERE FusionneDansId = @doublonId;";
         // Une recette peut garder deux lignes du même ingrédient (ex. : beurre pour la pâte et pour la garniture).
         const string sqlRecettes = "UPDATE dbo.RecetteIngredient SET IngredientId = @conserveId WHERE IngredientId = @doublonId;";
+        // Les articles des listes (actives ou terminées) suivent aussi ; une liste peut alors avoir deux lignes
+        // pour l'ingrédient conservé, que la prochaine regénération regroupe.
+        const string sqlListes = "UPDATE dbo.ListeEpicerieArticle SET IngredientId = @conserveId WHERE IngredientId = @doublonId;";
         const string sqlDesactiver = "UPDATE dbo.Ingredient SET Actif = 0, FusionneDansId = @conserveId WHERE Id = @doublonId;";
 
         return DansTransactionAsync(
@@ -244,6 +248,7 @@ public sealed class DepotIngredients : DepotBase
                 var synonymes = await s.ExecuterAsync(sqlSynonymes, Ids, annulation);
                 await s.ExecuterAsync(sqlAnciensDoublons, Ids, annulation);
                 await s.ExecuterAsync(sqlRecettes, Ids, annulation);
+                await s.ExecuterAsync(sqlListes, Ids, annulation);
                 await s.ExecuterAsync(sqlDesactiver, Ids, annulation);
                 return synonymes;
             },
