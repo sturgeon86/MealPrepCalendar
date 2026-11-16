@@ -1,6 +1,7 @@
 @page "/calendrier"
 @using Repas.Domaine.Calendrier
 @using Repas.Donnees
+@using Repas.Web.Components.Calendrier
 @inject DepotCalendrier DepotCalendrier
 @inject NavigationManager Navigation
 
@@ -21,6 +22,16 @@
     </div>
     <a class="bouton-secondaire" href="@Adresse(_semaine.Suivante())" aria-label="Semaine suivante"><span class="texte-navigation">Suivante </span>→</a>
 </nav>
+
+@if (_message is not null)
+{
+    <p class="message-succes" role="status">@_message</p>
+}
+
+@if (_repasEnEdition is not null)
+{
+    <PanneauRepas @key="_repasEnEdition" Repas="_repasEnEdition" AuTermine="FermerAsync" />
+}
 
 @if (_repas is null)
 {
@@ -43,8 +54,15 @@ else
                 @foreach (var plage in Enum.GetValues<Plage>())
                 {
                     var repasDeLaPlage = _repas.Where(r => r.Date == jour && r.Plage == plage).ToList();
+                    var plageCourante = plage;
+                    var libelleCase = $"{plage.Libelle().ToLowerInvariant()} du {Semaine.LibelleJour(jour)}";
                     <div class="plage">
-                        <span class="nom-plage">@plage.Libelle()</span>
+                        <div class="entete-plage">
+                            <span class="nom-plage">@plage.Libelle()</span>
+                            <button type="button" class="bouton-ajout-repas" title="Planifier un repas"
+                                    aria-label="Planifier un repas au @libelleCase"
+                                    @onclick="() => Ouvrir(new RepasPlanifie(0, jour, plageCourante, null, null, null))">+</button>
+                        </div>
                         @if (repasDeLaPlage.Count == 0)
                         {
                             <span class="plage-vide">—</span>
@@ -55,15 +73,19 @@ else
                                 @foreach (var repas in repasDeLaPlage)
                                 {
                                     <li @key="repas.Id">
-                                        @if (repas.RecetteId is { } recetteId)
-                                        {
-                                            <a href="recettes/@recetteId?portions=@repas.Portions">@repas.Titre</a>
-                                            <span class="details-ligne"> · @repas.Portions portion@(repas.Portions > 1 ? "s" : "")</span>
-                                        }
-                                        else
-                                        {
-                                            <span class="repas-libre">@repas.Titre</span>
-                                        }
+                                        <span class="contenu-repas">
+                                            @if (repas.RecetteId is { } recetteId)
+                                            {
+                                                <a href="recettes/@recetteId?portions=@repas.Portions">@repas.Titre</a>
+                                                <span class="details-ligne"> · @repas.Portions portion@(repas.Portions > 1 ? "s" : "")</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="repas-libre">@repas.Titre</span>
+                                            }
+                                        </span>
+                                        <button type="button" class="bouton-modifier-repas" title="Modifier, déplacer ou retirer"
+                                                aria-label="Modifier @repas.Titre (@libelleCase)" @onclick="() => Ouvrir(repas)">✎</button>
                                     </li>
                                 }
                             </ul>
@@ -79,6 +101,8 @@ else
     private Semaine _semaine;
     private DateOnly _aujourdhui;
     private List<RepasPlanifie>? _repas;
+    private RepasPlanifie? _repasEnEdition;
+    private string? _message;
 
     /// <summary>
     /// N'importe quel jour de la semaine à afficher (<c>?semaine=2026-11-15</c>) ; cette semaine par défaut.
@@ -93,7 +117,28 @@ else
         _aujourdhui = DateOnly.FromDateTime(DateTime.Now);
         var jour = DateOnly.TryParseExact(JourDemande, "yyyy-MM-dd", out var demande) ? demande : _aujourdhui;
         _semaine = Semaine.Contenant(jour);
-        _repas = await DepotCalendrier.ListerAsync(_semaine.Debut, _semaine.Fin);
+        _repasEnEdition = null;
+        _message = null;
+        await ChargerAsync();
+    }
+
+    private async Task ChargerAsync() => _repas = await DepotCalendrier.ListerAsync(_semaine.Debut, _semaine.Fin);
+
+    private void Ouvrir(RepasPlanifie repas)
+    {
+        _message = null;
+        _repasEnEdition = repas;
+    }
+
+    private async Task FermerAsync(string? message)
+    {
+        _repasEnEdition = null;
+        if (message is not null)
+        {
+            _message = message;
+            // Le calendrier est relu : il montre aussi les changements faits entre-temps par les autres.
+            await ChargerAsync();
+        }
     }
 
     /// <summary>« lundi 16 nov. » devient « Lundi 16 nov. » en tête de colonne.</summary>

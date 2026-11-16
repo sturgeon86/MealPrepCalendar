@@ -1,0 +1,83 @@
+@* Recherche d'une recette du livre par son nom, pour la planifier. Sans texte, propose les premières recettes. *@
+@implements IDisposable
+@using Repas.Domaine.Recettes
+@using Repas.Donnees
+@inject DepotRecettes DepotRecettes
+
+<div class="recherche-ingredient">
+    <label for="@IdChamp">Recette</label>
+    <input id="@IdChamp" type="search" placeholder="Nom de la recette" autocomplete="off"
+           value="@_texte" @oninput="SurSaisieAsync" @ref="_champ" />
+
+    @if (_resultats is not null)
+    {
+        @if (_resultats.Count == 0)
+        {
+            <p class="aide">
+                @(_texte.Trim().Length == 0 ? "Le livre de recettes est vide." : "Aucune recette ne porte ce nom.")
+            </p>
+        }
+        else
+        {
+            <ul class="suggestions" aria-label="Recettes trouvées">
+                @foreach (var recette in _resultats.Take(NombreMaxResultats))
+                {
+                    <li @key="recette.Id">
+                        <button type="button" @onclick="() => AuChoix.InvokeAsync(recette)">
+                            <span class="nom-ligne">@recette.Nom</span>
+                            <span class="details-ligne">@recette.Portions portion@(recette.Portions > 1 ? "s" : "")</span>
+                        </button>
+                    </li>
+                }
+            </ul>
+            @if (_resultats.Count > NombreMaxResultats)
+            {
+                <p class="aide">@(_resultats.Count - NombreMaxResultats) autre(s) recette(s) : précisez le nom.</p>
+            }
+        }
+    }
+</div>
+
+@code {
+    private const int NombreMaxResultats = 8;
+
+    private string _texte = string.Empty;
+    private List<ResumeRecette>? _resultats;
+    private CancellationTokenSource? _attente;
+    private ElementReference _champ;
+
+    [Parameter, EditorRequired]
+    public string IdChamp { get; set; } = default!;
+
+    [Parameter]
+    public EventCallback<ResumeRecette> AuChoix { get; set; }
+
+    protected override async Task OnInitializedAsync() => _resultats = await DepotRecettes.ListerAsync();
+
+    /// <summary>Place le curseur dans le champ de recherche.</summary>
+    public ValueTask FocusAsync() => _champ.FocusAsync();
+
+    private async Task SurSaisieAsync(ChangeEventArgs e)
+    {
+        _texte = e.Value?.ToString() ?? string.Empty;
+        _attente?.Cancel();
+        _attente?.Dispose();
+        _attente = new CancellationTokenSource();
+        var jeton = _attente.Token;
+        try
+        {
+            await Task.Delay(250, jeton);
+            _resultats = await DepotRecettes.RechercherAsync(new CriteresRechercheRecettes(Nom: _texte), annulation: jeton);
+        }
+        catch (OperationCanceledException)
+        {
+            // Une autre frappe a suivi : c'est elle qui lancera la recherche.
+        }
+    }
+
+    public void Dispose()
+    {
+        _attente?.Cancel();
+        _attente?.Dispose();
+    }
+}

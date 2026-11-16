@@ -1,0 +1,271 @@
+@* Panneau d'ajout ou de modification d'un repas planifié : une recette avec ses portions, ou un texte libre.
+   En modification, on peut aussi changer la date ou la plage (déplacer) et retirer le repas. *@
+@using Repas.Domaine.Calendrier
+@using Repas.Domaine.Recettes
+@using Repas.Donnees
+@using Repas.Web.Authentification
+@inject DepotCalendrier DepotCalendrier
+
+<div class="fond-panneau" @onclick="AnnulerAsync"></div>
+<div class="panneau" role="dialog" aria-modal="true" aria-labelledby="titre-panneau" @onkeydown="SurToucheAsync">
+    <h2 id="titre-panneau">@(EstNouveau ? "Planifier un repas" : "Modifier le repas")</h2>
+    <p class="aide">@Semaine.LibelleJour(_date) · @_plage.Libelle()</p>
+
+    @if (_erreurs.Count > 0)
+    {
+        <div class="message-erreur" role="alert">
+            <ul>
+                @foreach (var erreur in _erreurs)
+                {
+                    <li>@erreur</li>
+                }
+            </ul>
+        </div>
+    }
+
+    <div class="choix-mode" role="radiogroup" aria-label="Type de repas">
+        <button type="button" role="radio" aria-checked="@(!_estLibre)" class="@(!_estLibre ? "actif" : null)"
+                @onclick="() => ChangerMode(libre: false)">Une recette</button>
+        <button type="button" role="radio" aria-checked="@_estLibre" class="@(_estLibre ? "actif" : null)"
+                @onclick="() => ChangerMode(libre: true)">Repas libre</button>
+    </div>
+
+    @if (!_estLibre)
+    {
+        @if (_recette is null)
+        {
+            <ChoixRecette @ref="_choixRecette" IdChamp="choix-recette" AuChoix="ChoisirRecette" />
+        }
+        else
+        {
+            <div class="recette-choisie">
+                <span class="nom-ligne">@_recette.Value.Nom</span>
+                <button type="button" class="bouton-lien-texte" @onclick="ChangerRecette">Changer</button>
+            </div>
+
+            <div class="champ">
+                <label for="portions-repas">Portions à préparer</label>
+                <div class="selecteur-portions">
+                    <button type="button" class="bouton-icone" aria-label="Une portion de moins"
+                            disabled="@(_portions <= 1)" @onclick="() => _portions = Math.Max(1, _portions - 1)">−</button>
+                    <input id="portions-repas" class="champ-portions" type="number" min="1" max="@ValidationRecette.PortionsMax"
+                           @bind="_portions" />
+                    <button type="button" class="bouton-icone" aria-label="Une portion de plus"
+                            disabled="@(_portions >= ValidationRecette.PortionsMax)"
+                            @onclick="() => _portions = Math.Min(ValidationRecette.PortionsMax, _portions + 1)">+</button>
+                    @if (_portions != _recette.Value.Portions)
+                    {
+                        <span class="details-ligne">La recette en donne @_recette.Value.Portions.</span>
+                    }
+                </div>
+            </div>
+        }
+    }
+    else
+    {
+        <div class="champ">
+            <label for="texte-libre">Description</label>
+            <input id="texte-libre" @bind="_texteLibre" @bind:event="oninput" maxlength="@ValidationRepas.LongueurMaxTexteLibre"
+                   placeholder="Ex. : Restaurant, Restes" autocomplete="off" @ref="_champTexte" />
+        </div>
+        <div class="suggestions-rapides" aria-label="Suggestions">
+            @foreach (var suggestion in SuggestionsLibres)
+            {
+                <button type="button" class="bouton-secondaire bouton-mini" @onclick="() => _texteLibre = suggestion">@suggestion</button>
+            }
+        </div>
+    }
+
+    @if (!EstNouveau)
+    {
+        @* Déplacer : changer la date ou la plage. *@
+        <div class="grille-2 deplacement">
+            <div class="champ">
+                <label for="date-repas">Date</label>
+                <input id="date-repas" type="date" @bind="_date" />
+            </div>
+            <div class="champ">
+                <label for="plage-repas">Plage</label>
+                <select id="plage-repas" @bind="_plage">
+                    @foreach (var plage in Enum.GetValues<Plage>())
+                    {
+                        <option value="@plage">@plage.Libelle()</option>
+                    }
+                </select>
+            </div>
+        </div>
+    }
+
+    <div class="actions-panneau">
+        <button type="button" class="bouton-principal bouton-compact" disabled="@_enCours" @onclick="EnregistrerAsync">
+            @(EstNouveau ? "Ajouter au calendrier" : "Enregistrer")
+        </button>
+        <button type="button" class="bouton-secondaire" @onclick="AnnulerAsync">Annuler</button>
+        @if (!EstNouveau)
+        {
+            @if (_confirmerRetrait)
+            {
+                <span class="confirmation-retrait">
+                    <button type="button" class="bouton-danger" disabled="@_enCours" @onclick="RetirerAsync">Confirmer le retrait</button>
+                    <button type="button" class="bouton-lien-texte" @onclick="() => _confirmerRetrait = false">Garder</button>
+                </span>
+            }
+            else
+            {
+                <button type="button" class="bouton-lien-texte bouton-retirer" @onclick="() => _confirmerRetrait = true">Retirer du calendrier</button>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private static readonly string[] SuggestionsLibres = ["Restes", "Restaurant", "Livraison", "Chez la famille"];
+
+    private ChoixRecette? _choixRecette;
+    private ElementReference _champTexte;
+    private bool _focusAFaire = true;
+
+    private bool _estLibre;
+    private (int Id, string Nom, int Portions)? _recette;
+    private int _portions;
+    private string _texteLibre = string.Empty;
+    private DateOnly _date;
+    private Plage _plage;
+
+    private List<string> _erreurs = [];
+    private bool _enCours;
+    private bool _confirmerRetrait;
+
+    /// <summary>Le repas à modifier, ou un repas vide (Id 0) portant la date et la plage où l'ajouter.</summary>
+    [Parameter, EditorRequired]
+    public RepasPlanifie Repas { get; set; } = default!;
+
+    /// <summary>Appelé à la fermeture, avec un message à afficher si le calendrier a changé ; <c>null</c> si rien n'a changé.</summary>
+    [Parameter]
+    public EventCallback<string?> AuTermine { get; set; }
+
+    [CascadingParameter]
+    private Task<AuthenticationState> EtatAuthentification { get; set; } = default!;
+
+    private bool EstNouveau => Repas.Id == 0;
+
+    protected override void OnInitialized()
+    {
+        _date = Repas.Date;
+        _plage = Repas.Plage;
+        _estLibre = Repas.RecetteId is null && !EstNouveau;
+        _texteLibre = Repas.TexteLibre ?? string.Empty;
+        if (Repas.RecetteId is { } recetteId)
+        {
+            _recette = (recetteId, Repas.NomRecette ?? string.Empty, Repas.PortionsRecette ?? Repas.Portions ?? 1);
+            _portions = Repas.Portions ?? 1;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Le curseur va au premier champ utile, à l'ouverture et après un changement de mode.
+        if (!_focusAFaire)
+        {
+            return;
+        }
+
+        _focusAFaire = false;
+        if (_estLibre)
+        {
+            await _champTexte.FocusAsync();
+        }
+        else if (_choixRecette is not null)
+        {
+            await _choixRecette.FocusAsync();
+        }
+    }
+
+    private void ChangerMode(bool libre)
+    {
+        _estLibre = libre;
+        _erreurs = [];
+        _focusAFaire = true;
+    }
+
+    private void ChangerRecette()
+    {
+        _recette = null;
+        _focusAFaire = true;
+    }
+
+    private void ChoisirRecette(ResumeRecette recette)
+    {
+        _recette = (recette.Id, recette.Nom, recette.Portions);
+        // On part des portions de la recette ; on les ajuste ensuite au besoin.
+        _portions = recette.Portions;
+        _erreurs = [];
+    }
+
+    private async Task SurToucheAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            await AnnulerAsync();
+        }
+    }
+
+    private Task AnnulerAsync() => AuTermine.InvokeAsync(null);
+
+    private async Task EnregistrerAsync()
+    {
+        var repas = _estLibre
+            ? new RepasPlanifie(Repas.Id, _date, _plage, null, _texteLibre, null)
+            : new RepasPlanifie(Repas.Id, _date, _plage, _recette?.Id, null, _recette is null ? null : _portions);
+
+        _erreurs = ValidationRepas.Valider(repas).ToList();
+        if (_erreurs.Count > 0)
+        {
+            return;
+        }
+
+        _enCours = true;
+        try
+        {
+            if (EstNouveau)
+            {
+                var auteur = (await EtatAuthentification).User.ObtenirIdUtilisateur()
+                    ?? throw new InvalidOperationException("Aucun utilisateur connecté.");
+                await DepotCalendrier.AjouterAsync(repas, auteur);
+                await AuTermine.InvokeAsync($"Repas ajouté : {Semaine.LibelleJour(_date)}, {_plage.Libelle().ToLowerInvariant()}.");
+                return;
+            }
+
+            if (!await DepotCalendrier.ModifierAsync(repas))
+            {
+                // Le panneau se ferme et le calendrier est relu, pour ne plus montrer ce repas disparu.
+                await AuTermine.InvokeAsync("Ce repas avait déjà été retiré du calendrier, peut-être depuis un autre appareil.");
+                return;
+            }
+
+            var deplace = _date != Repas.Date || _plage != Repas.Plage;
+            await AuTermine.InvokeAsync(deplace
+                ? $"Repas déplacé : {Semaine.LibelleJour(_date)}, {_plage.Libelle().ToLowerInvariant()}."
+                : "Repas modifié.");
+        }
+        finally
+        {
+            _enCours = false;
+        }
+    }
+
+    private async Task RetirerAsync()
+    {
+        _enCours = true;
+        try
+        {
+            // Déjà retiré par quelqu'un d'autre : le résultat voulu est atteint.
+            await DepotCalendrier.SupprimerAsync(Repas.Id);
+            await AuTermine.InvokeAsync("Repas retiré du calendrier.");
+        }
+        finally
+        {
+            _enCours = false;
+        }
+    }
+}

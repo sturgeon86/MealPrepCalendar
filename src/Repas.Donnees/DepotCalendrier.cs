@@ -19,7 +19,7 @@ public sealed class DepotCalendrier : DepotBase
         DateOnly debut, DateOnly fin, SessionSql? session = null, CancellationToken annulation = default)
     {
         const string sql = """
-            SELECT rp.Id, rp.[Date], rp.Plage, rp.RecetteId, rp.TexteLibre, rp.Portions, r.Nom
+            SELECT rp.Id, rp.[Date], rp.Plage, rp.RecetteId, rp.TexteLibre, rp.Portions, r.Nom, r.Portions
             FROM dbo.RepasPlanifie rp
             LEFT JOIN dbo.Recette r ON r.Id = rp.RecetteId
             WHERE rp.[Date] BETWEEN @debut AND @fin
@@ -37,7 +37,7 @@ public sealed class DepotCalendrier : DepotBase
     public Task<RepasPlanifie?> TrouverAsync(int id, SessionSql? session = null, CancellationToken annulation = default)
     {
         const string sql = """
-            SELECT rp.Id, rp.[Date], rp.Plage, rp.RecetteId, rp.TexteLibre, rp.Portions, r.Nom
+            SELECT rp.Id, rp.[Date], rp.Plage, rp.RecetteId, rp.TexteLibre, rp.Portions, r.Nom, r.Portions
             FROM dbo.RepasPlanifie rp
             LEFT JOIN dbo.Recette r ON r.Id = rp.RecetteId
             WHERE rp.Id = @id;
@@ -96,7 +96,8 @@ public sealed class DepotCalendrier : DepotBase
         RecetteId: l.IsDBNull(3) ? null : l.GetInt32(3),
         TexteLibre: l.IsDBNull(4) ? null : l.GetString(4),
         Portions: l.IsDBNull(5) ? null : l.GetInt32(5),
-        NomRecette: l.IsDBNull(6) ? null : l.GetString(6));
+        NomRecette: l.IsDBNull(6) ? null : l.GetString(6),
+        PortionsRecette: l.IsDBNull(7) ? null : l.GetInt32(7));
 
     private static SqlParameterCollection AjouterColonnes(SqlParameterCollection p, RepasPlanifie repas) => p
         .Ajouter("@date", SqlDbType.Date, repas.Date)

@@ -920,3 +920,190 @@ a.bouton-secondaire {
 .repas-libre {
     font-style: italic;
 }
+
+/* --- Planification d'un repas --- */
+.entete-plage {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.25rem;
+}
+
+.bouton-ajout-repas,
+.bouton-modifier-repas {
+    flex: none;
+    min-width: 1.75rem;
+    min-height: 1.75rem;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 0.375rem;
+    background: transparent;
+    color: #1f6f4a;
+    font: inherit;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.bouton-ajout-repas {
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.bouton-ajout-repas:hover,
+.bouton-ajout-repas:focus-visible,
+.bouton-modifier-repas:hover,
+.bouton-modifier-repas:focus-visible {
+    border-color: #9aa5b1;
+    background: #f0f4f8;
+}
+
+.repas-plage li {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.25rem;
+}
+
+.contenu-repas {
+    min-width: 0;
+}
+
+.fond-panneau {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    background: rgba(31, 41, 51, 0.45);
+}
+
+.panneau {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    z-index: 11;
+    width: min(32rem, calc(100vw - 2rem));
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+    padding: 1.25rem 1.5rem;
+    border-radius: 0.5rem;
+    background: #fff;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    transform: translate(-50%, -50%);
+}
+
+.panneau h2 {
+    margin: 0;
+    font-size: 1.25rem;
+}
+
+.panneau > .aide:first-of-type {
+    margin-top: 0.25rem;
+}
+
+.choix-mode {
+    display: flex;
+    margin: 0.75rem 0 1rem;
+    border: 1px solid #9aa5b1;
+    border-radius: 0.375rem;
+    overflow: hidden;
+}
+
+.choix-mode button {
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    border: 0;
+    background: #fff;
+    font: inherit;
+    cursor: pointer;
+}
+
+.choix-mode button + button {
+    border-left: 1px solid #9aa5b1;
+}
+
+.choix-mode button.actif {
+    background: #1f6f4a;
+    color: #fff;
+    font-weight: 600;
+}
+
+.recette-choisie {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.75rem;
+    margin-bottom: 1rem;
+    padding: 0.625rem 0.75rem;
+    border-radius: 0.375rem;
+    background: #e3f5ea;
+}
+
+.champ-portions {
+    width: 4.5rem;
+    text-align: center;
+}
+
+.suggestions-rapides {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    margin: -0.5rem 0 1rem;
+}
+
+.bouton-mini {
+    padding: 0.25rem 0.625rem;
+    font-size: 0.875rem;
+}
+
+.deplacement {
+    padding-top: 0.75rem;
+    border-top: 1px solid #e4e7eb;
+}
+
+.actions-panneau {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    margin-top: 0.5rem;
+}
+
+.bouton-retirer {
+    margin-left: auto;
+    color: #8a1c13;
+}
+
+.confirmation-retrait {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    margin-left: auto;
+}
+
+.bouton-danger {
+    padding: 0.5rem 0.875rem;
+    border: 0;
+    border-radius: 0.375rem;
+    background: #b42318;
+    color: #fff;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.bouton-danger:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+/* Plus précis que « .champ input » (pleine largeur) : le champ des portions reste étroit, entre − et +. */
+.champ .selecteur-portions input.champ-portions {
+    flex: none;
+    width: 4.5rem;
+    margin: 0;
+}
+
+.panneau .selecteur-portions {
+    flex-wrap: nowrap;
+    margin-bottom: 0;
+}

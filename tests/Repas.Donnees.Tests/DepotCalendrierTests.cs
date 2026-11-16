@@ -39,7 +39,8 @@ public sealed class DepotCalendrierTests : IAsyncLifetime
 
         var repas = await _depot.TrouverAsync(id);
 
-        Assert.Equal(new RepasPlanifie(id, Lundi, Plage.Souper, _pateChinois, null, 4, "Pâté chinois"), repas);
+        // 4 portions planifiées ; la recette en donne 6.
+        Assert.Equal(new RepasPlanifie(id, Lundi, Plage.Souper, _pateChinois, null, 4, "Pâté chinois", 6), repas);
         Assert.Equal("Pâté chinois", repas!.Titre);
     }
 
@@ -96,7 +97,7 @@ public sealed class DepotCalendrierTests : IAsyncLifetime
         var deplace = RepasPlanifie.PourRecette(Lundi.AddDays(2), Plage.Diner, _soupe, 2) with { Id = id };
         Assert.True(await _depot.ModifierAsync(deplace));
 
-        Assert.Equal(deplace with { NomRecette = "Soupe aux légumes" }, await _depot.TrouverAsync(id));
+        Assert.Equal(deplace with { NomRecette = "Soupe aux légumes", PortionsRecette = 6 }, await _depot.TrouverAsync(id));
     }
 
     [Fact]

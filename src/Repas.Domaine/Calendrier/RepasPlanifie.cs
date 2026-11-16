@@ -14,6 +14,7 @@ public enum Plage
 /// <param name="TexteLibre">Un repas sans recette (« Restaurant », « Restes ») ; <c>null</c> pour une recette.</param>
 /// <param name="Portions">Portions à préparer ; seulement pour une recette.</param>
 /// <param name="NomRecette">Pour l'affichage seulement ; ignoré à l'enregistrement.</param>
+/// <param name="PortionsRecette">Portions que donne la recette elle-même ; pour l'affichage seulement.</param>
 public sealed record RepasPlanifie(
     int Id,
     DateOnly Date,
@@ -21,7 +22,8 @@ public sealed record RepasPlanifie(
     int? RecetteId,
     string? TexteLibre,
     int? Portions,
-    string? NomRecette = null)
+    string? NomRecette = null,
+    int? PortionsRecette = null)
 {
     /// <summary>Un repas tiré d'une recette du livre.</summary>
     public static RepasPlanifie PourRecette(DateOnly date, Plage plage, int recetteId, int portions) =>
