@@ -72,7 +72,7 @@ L'app tourne sur Unraid en réseau local seulement (`http://192.168.1.10:8096`, 
   - *Décidé :* une liste peut exister sans période (la prochaine liste, qui reçoit les articles reportés avant d'être générée) ; un repas retiré du calendrier emporte sa trace dans les sources ; la fusion d'ingrédients reporte aussi les articles des listes.
 - [x] **5.2 Calcul de la liste** dans `Repas.Domaine` : portions, conversions, sommes, nombre de recettes, lignes séparées si conversion impossible.
   - *Critères :* tests unitaires sur des scénarios réalistes (ex. : 3 recettes de poulet, lait en ml et en tasses, farine sans densité).
-- [ ] **5.3 Générer la liste** à partir d'une période du calendrier.
+- [x] **5.3 Générer la liste** à partir d'une période du calendrier.
 - [ ] **5.4 Regénérer** : recalcule les articles venant des repas, conserve les articles manuels, reportés et les cases cochées.
 - [ ] **5.5 Ajout manuel** d'un article du référentiel (alimentaire ou non), avec quantité optionnelle.
 - [ ] **5.6 Affichage par catégorie**, selon l'ordre générique, avec unités lisibles (1500 ml → 1,5 l) et alertes de conversion.

@@ -1,0 +1,209 @@
+@page "/epicerie"
+@using Repas.Domaine.Calendrier
+@using Repas.Domaine.Epicerie
+@using Repas.Domaine.Mesures
+@using Repas.Domaine.Recettes
+@using Repas.Donnees
+@using Repas.Web.Authentification
+@inject DepotListeEpicerie DepotListe
+@inject DepotUnites DepotUnites
+
+<PageTitle>Épicerie</PageTitle>
+
+<div class="entete-page">
+    <h1>Épicerie</h1>
+</div>
+
+@if (_message is not null)
+{
+    <p class="@(_messageEstErreur ? "message-erreur" : "message-succes")" role="status">@_message</p>
+}
+
+@if (_charge is false)
+{
+    <p>Chargement…</p>
+}
+else if (_liste is null || !_liste.Liste.EstGeneree)
+{
+    <section class="carte-formulaire carte-large">
+        <h2>Générer la liste</h2>
+        <p class="aide">
+            La liste additionne les ingrédients des recettes planifiées au calendrier pendant la période choisie.
+        </p>
+
+        <div class="suggestions-rapides">
+            <button type="button" class="bouton-secondaire bouton-mini" @onclick="() => ChoisirSemaine(_semaineCourante)">
+                Cette semaine (@_semaineCourante.Libelle)
+            </button>
+            <button type="button" class="bouton-secondaire bouton-mini" @onclick="() => ChoisirSemaine(_semaineCourante.Suivante())">
+                Semaine prochaine (@_semaineCourante.Suivante().Libelle)
+            </button>
+        </div>
+
+        <div class="grille-2">
+            <div class="champ">
+                <label for="debut">Du</label>
+                <input id="debut" type="date" @bind="_debut" />
+            </div>
+            <div class="champ">
+                <label for="fin">Au</label>
+                <input id="fin" type="date" @bind="_fin" />
+            </div>
+        </div>
+
+        <button type="button" class="bouton-principal bouton-compact" disabled="@_enCours" @onclick="GenererAsync">
+            @(_enCours ? "Génération…" : "Générer la liste")
+        </button>
+    </section>
+}
+
+@if (_liste is { } liste && (liste.Liste.EstGeneree || liste.Articles.Count > 0))
+{
+    <section class="liste-epicerie">
+        <div class="entete-liste">
+            <h2>@liste.Liste.Nom</h2>
+            @if (liste.Liste.DateGenerationUtc is { } generation)
+            {
+                <p class="aide">Générée le @MomentLocal(generation) · @liste.Articles.Count article@(liste.Articles.Count > 1 ? "s" : "")</p>
+            }
+        </div>
+
+        @if (liste.Articles.Count == 0)
+        {
+            <p class="aide">Aucun article : les recettes planifiées n'ont pas encore d'ingrédients.</p>
+        }
+        else
+        {
+            <ul class="liste-cartes articles-liste">
+                @foreach (var article in liste.Articles)
+                {
+                    var alerte = AlertesListe.Verifier(article, _convertisseur);
+                    <li @key="article.Id" class="@(alerte != RaisonEchecConversion.Aucune ? "article-alerte" : null)">
+                        <span class="quantite-article">@Quantite(article)</span>
+                        <div class="infos-ligne">
+                            <span class="nom-ligne">
+                                @article.NomIngredient
+                                @if (article.NbRecettes > 1)
+                                {
+                                    <span class="details-ligne"> (@article.NbRecettes recettes)</span>
+                                }
+                            </span>
+                            <span class="details-ligne">
+                                @article.Categorie
+                                @if (article.EstManuel)
+                                {
+                                    <span class="pastille">Ajout manuel</span>
+                                }
+                                @if (article.EstReporte)
+                                {
+                                    <span class="pastille">Reporté</span>
+                                }
+                            </span>
+                            @if (alerte != RaisonEchecConversion.Aucune)
+                            {
+                                <span class="texte-alerte">
+                                    ⚠ @AlertesListe.Decrire(alerte)
+                                    <a href="ingredients/@article.IngredientId">Compléter la fiche</a>
+                                </span>
+                            }
+                        </div>
+                    </li>
+                }
+            </ul>
+        }
+    </section>
+}
+
+@code {
+    private bool _charge;
+    private ListeAvecArticles? _liste;
+    private ConvertisseurUnites _convertisseur = new([]);
+    private Semaine _semaineCourante;
+    private DateOnly _debut;
+    private DateOnly _fin;
+    private bool _enCours;
+    private string? _message;
+    private bool _messageEstErreur;
+
+    [CascadingParameter]
+    private Task<AuthenticationState> EtatAuthentification { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // L'heure du serveur suit le fuseau de la famille (variable TZ du conteneur).
+        _semaineCourante = Semaine.Contenant(DateOnly.FromDateTime(DateTime.Now));
+        ChoisirSemaine(_semaineCourante);
+        _convertisseur = new ConvertisseurUnites(await DepotUnites.ListerAsync());
+        await ChargerAsync();
+    }
+
+    private async Task ChargerAsync()
+    {
+        _liste = await DepotListe.TrouverActiveAsync();
+        _charge = true;
+    }
+
+    private void ChoisirSemaine(Semaine semaine)
+    {
+        _debut = semaine.Debut;
+        _fin = semaine.Fin;
+    }
+
+    private async Task GenererAsync()
+    {
+        _message = null;
+        if (_fin < _debut)
+        {
+            Afficher("La date de fin doit suivre la date de début.", erreur: true);
+            return;
+        }
+
+        _enCours = true;
+        try
+        {
+            var auteur = (await EtatAuthentification).User.ObtenirIdUtilisateur()
+                ?? throw new InvalidOperationException("Aucun utilisateur connecté.");
+            var resultat = await DepotListe.GenererAsync(_debut, _fin, auteur);
+            switch (resultat.Statut)
+            {
+                case StatutGeneration.Generee:
+                    Afficher(
+                        $"Liste générée : {resultat.NbArticles} article{(resultat.NbArticles > 1 ? "s" : "")} " +
+                        $"à partir de {resultat.NbRepas} repas.",
+                        erreur: false);
+                    break;
+                case StatutGeneration.AucunRepas:
+                    Afficher(
+                        $"Aucun repas avec recette au calendrier du {Semaine.LibellePeriode(_debut, _fin)}. Planifiez des repas, puis générez la liste.",
+                        erreur: true);
+                    break;
+                default:
+                    Afficher("Une liste a déjà été générée, peut-être depuis un autre appareil. La voici.", erreur: false);
+                    break;
+            }
+
+            await ChargerAsync();
+        }
+        finally
+        {
+            _enCours = false;
+        }
+    }
+
+    private void Afficher(string message, bool erreur)
+    {
+        _message = message;
+        _messageEstErreur = erreur;
+    }
+
+    private static string Quantite(ArticleListe article) =>
+        article.Quantite is { } quantite && article.CodeUnite is { } code ? AffichageQuantite.Formater(quantite, code) : "—";
+
+    private static string MomentLocal(DateTime utc)
+    {
+        var local = TimeZoneInfo.ConvertTimeFromUtc(utc, TimeZoneInfo.Local);
+        var culture = System.Globalization.CultureInfo.GetCultureInfo("fr-CA");
+        // « 16 nov. à 7 h 05 », comme on écrit l'heure au Québec.
+        return $"{local.ToString("d MMM", culture)} à {local.ToString("H' h 'mm", culture)}";
+    }
+}

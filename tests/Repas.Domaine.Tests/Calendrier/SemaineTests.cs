@@ -70,3 +70,22 @@ public sealed class SemaineTests
         Assert.Equal(attendu, Semaine.LibelleJour(DateOnly.Parse(date)));
     }
 }
+
+public sealed class LibellePeriodeTests
+{
+    [Theory]
+    [InlineData("2026-11-16", "2026-11-16", "16 novembre 2026")]
+    [InlineData("2026-11-01", "2026-11-01", "1er novembre 2026")]
+    [InlineData("2026-11-16", "2026-11-25", "16 au 25 novembre 2026")]
+    [InlineData("2026-11-29", "2026-12-12", "29 novembre au 12 décembre 2026")]
+    public void LibellePeriode(string debut, string fin, string attendu)
+    {
+        Assert.Equal(attendu, Semaine.LibellePeriode(DateOnly.Parse(debut), DateOnly.Parse(fin)));
+    }
+
+    [Fact]
+    public void LibellePeriode_FinAvantDebut_EstRefusee()
+    {
+        Assert.Throws<ArgumentException>(() => Semaine.LibellePeriode(new DateOnly(2026, 11, 16), new DateOnly(2026, 11, 15)));
+    }
+}

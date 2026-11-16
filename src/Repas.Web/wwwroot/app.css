@@ -1203,3 +1203,45 @@ a.bouton-secondaire {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
+
+/* --- Liste d'épicerie --- */
+.entete-liste h2 {
+    margin-bottom: 0.25rem;
+}
+
+.entete-liste .aide {
+    margin-top: 0;
+}
+
+.liste-cartes.articles-liste li {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    align-items: baseline;
+}
+
+.quantite-article {
+    flex: none;
+    width: 7rem;
+    font-weight: 600;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.articles-liste .pastille {
+    margin-left: 0.375rem;
+}
+
+.article-alerte {
+    background: #fffbea;
+}
+
+.texte-alerte {
+    color: #8d5b00;
+    font-size: 0.875rem;
+}
+
+@media (max-width: 30rem) {
+    .quantite-article {
+        width: 5.5rem;
+    }
+}

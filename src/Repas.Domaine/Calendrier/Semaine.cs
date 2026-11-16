@@ -40,16 +40,28 @@ public readonly record struct Semaine
     /// La période en toutes lettres, sans répéter le mois ou l'année inutilement :
     /// « 15 au 21 novembre 2026 », « 29 novembre au 5 décembre 2026 », « 27 décembre 2026 au 2 janvier 2027 ».
     /// </summary>
-    public string Libelle
+    public string Libelle => LibellePeriode(Debut, Fin);
+
+    /// <summary>
+    /// Une période quelconque en toutes lettres, comme <see cref="Libelle"/> ; un seul jour s'écrit « 16 novembre 2026 ».
+    /// </summary>
+    public static string LibellePeriode(DateOnly debut, DateOnly fin)
     {
-        get
+        if (fin < debut)
         {
-            var fin = Fin.ToString("d MMMM yyyy", Culture);
-            var debut = Debut.Year != Fin.Year ? Debut.ToString("d MMMM yyyy", Culture)
-                : Debut.Month != Fin.Month ? Debut.ToString("d MMMM", Culture)
-                : Debut.Day.ToString(Culture);
-            return $"{PremierDuMois(debut, Debut)} au {PremierDuMois(fin, Fin)}";
+            throw new ArgumentException("La fin de la période précède son début.", nameof(fin));
         }
+
+        var texteFin = PremierDuMois(fin.ToString("d MMMM yyyy", Culture), fin);
+        if (debut == fin)
+        {
+            return texteFin;
+        }
+
+        var texteDebut = debut.Year != fin.Year ? debut.ToString("d MMMM yyyy", Culture)
+            : debut.Month != fin.Month ? debut.ToString("d MMMM", Culture)
+            : debut.Day.ToString(Culture);
+        return $"{PremierDuMois(texteDebut, debut)} au {texteFin}";
     }
 
     /// <summary>Nom du jour et date courte pour l'en-tête d'une colonne : « lundi 16 nov. ».</summary>
