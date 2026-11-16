@@ -16,6 +16,9 @@ public static class ValidationRecette
 
     public const decimal QuantiteMax = 100_000m;
 
+    /// <summary>La quantité maximale écrite en français (« 100 000 »), quelle que soit la culture du serveur.</summary>
+    public static readonly string QuantiteMaxTexte = QuantiteMax.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("fr-CA"));
+
     /// <summary>Retire les étapes vides et les espaces autour de chacune, en gardant l'ordre.</summary>
     public static IReadOnlyList<string> NormaliserEtapes(IEnumerable<string?> etapes)
     {
@@ -87,7 +90,7 @@ public static class ValidationRecette
 
             if (ligne.Quantite is <= 0 or > QuantiteMax)
             {
-                erreurs.Add($"La quantité de {nom} doit être plus grande que 0 et au plus {QuantiteMax:N0}.");
+                erreurs.Add($"La quantité de {nom} doit être plus grande que 0 et au plus {QuantiteMaxTexte}.");
             }
 
             if (ligne.Precision?.Length > LongueurMaxPrecision)

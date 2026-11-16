@@ -42,7 +42,14 @@ public sealed record ArticleListe(
     bool EstManuel,
     bool EstReporte,
     bool EstCoche,
-    MesuresIngredient Mesures);
+    MesuresIngredient Mesures)
+{
+    /// <summary>
+    /// Un article ajouté à la main ou reporté peut être retiré ; un article des repas, non :
+    /// la prochaine regénération le remettrait.
+    /// </summary>
+    public bool PeutEtreRetire => EstManuel || EstReporte;
+}
 
 /// <summary>Une liste et ses articles, dans l'ordre du trajet en magasin (catégorie, puis nom).</summary>
 public sealed record ListeAvecArticles(ListeEpicerie Liste, IReadOnlyList<ArticleListe> Articles);

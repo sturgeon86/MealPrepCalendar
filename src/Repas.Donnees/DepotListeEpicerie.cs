@@ -150,6 +150,115 @@ public sealed class DepotListeEpicerie : DepotBase
         return DansTransactionAsync(session, s => RegenererDansAsync(s, debut, fin, annulation), annulation);
     }
 
+    /// <summary>
+    /// Ajoute un article à la main à la liste active, dans une transaction ; crée la liste (sans période) s'il n'y en a pas.
+    /// Si le même ingrédient est déjà sur la liste à la main, pas encore coché et dans la même unité (ou sans quantité),
+    /// les quantités s'additionnent sur cette ligne (<see cref="AjoutManuel.Additionner"/>).
+    /// </summary>
+    /// <param name="creeParId">L'utilisateur, si la liste doit être créée.</param>
+    /// <exception cref="AjoutManuelRefuseException">L'ajout n'est pas valide, ou l'ingrédient est désactivé.</exception>
+    public Task<ResultatAjoutManuel> AjouterManuelAsync(
+        AjoutManuel ajout, int creeParId, SessionSql? session = null, CancellationToken annulation = default)
+    {
+        ArgumentNullException.ThrowIfNull(ajout);
+        var erreurs = ajout.Valider();
+        if (erreurs.Count > 0)
+        {
+            throw new AjoutManuelRefuseException(string.Join(" ", erreurs));
+        }
+
+        const string sqlActif = "SELECT Actif FROM dbo.Ingredient WHERE Id = @ingredientId;";
+        const string sqlCreerListe = """
+            INSERT INTO dbo.ListeEpicerie (Nom, CreePar) OUTPUT INSERTED.Id VALUES (@nom, @creePar);
+            """;
+        // La ligne à compléter : même unité d'abord, sinon une ligne sans quantité, ou n'importe laquelle si l'ajout n'en a pas.
+        const string sqlExistant = """
+            SELECT TOP (1) Id, QuantiteTotale, UniteId
+            FROM dbo.ListeEpicerieArticle WITH (UPDLOCK)
+            WHERE ListeId = @listeId AND IngredientId = @ingredientId AND EstManuel = 1 AND EstReporte = 0 AND EstCoche = 0
+              AND (UniteId = @uniteId OR UniteId IS NULL OR @uniteId IS NULL)
+            ORDER BY CASE WHEN UniteId = @uniteId THEN 0 WHEN UniteId IS NULL THEN 1 ELSE 2 END, Id;
+            """;
+        const string sqlMettreAJour = "UPDATE dbo.ListeEpicerieArticle SET QuantiteTotale = @quantite, UniteId = @uniteId WHERE Id = @id;";
+        const string sqlInserer = """
+            INSERT INTO dbo.ListeEpicerieArticle (ListeId, IngredientId, QuantiteTotale, UniteId, EstManuel)
+            OUTPUT INSERTED.Id
+            VALUES (@listeId, @ingredientId, @quantite, @uniteId, 1);
+            """;
+
+        return DansTransactionAsync(
+            session,
+            async s =>
+            {
+                var actif = await s.PremierOuDefautAsync(
+                    sqlActif, l => (bool?)l.GetBoolean(0), p => p.Ajouter("@ingredientId", SqlDbType.Int, ajout.IngredientId), annulation);
+                if (actif is not true)
+                {
+                    throw new AjoutManuelRefuseException("Cet article n'existe pas ou a été désactivé dans le référentiel.");
+                }
+
+                var listeId = (await VerrouillerActiveAsync(s, annulation))?.Id
+                    ?? await s.ScalaireAsync<int>(
+                        sqlCreerListe,
+                        p => p.Ajouter("@nom", SqlDbType.NVarChar, 100, NomProchaineListe).Ajouter("@creePar", SqlDbType.Int, creeParId),
+                        annulation);
+
+                void Cle(SqlParameterCollection p) => p
+                    .Ajouter("@listeId", SqlDbType.Int, listeId)
+                    .Ajouter("@ingredientId", SqlDbType.Int, ajout.IngredientId)
+                    .Ajouter("@uniteId", SqlDbType.Int, ajout.UniteId);
+
+                var existant = await s.PremierOuDefautAsync(
+                    sqlExistant,
+                    l => ((int Id, decimal? Quantite, int? UniteId)?)(l.GetInt32(0), LireDecimal(l, 1), l.IsDBNull(2) ? null : l.GetInt32(2)),
+                    Cle,
+                    annulation);
+
+                if (existant is { } ligne)
+                {
+                    var quantite = AjoutManuel.Additionner(ligne.Quantite, ajout.Quantite);
+                    var uniteId = ligne.UniteId ?? ajout.UniteId;
+                    await s.ExecuterAsync(
+                        sqlMettreAJour,
+                        p => p
+                            .Ajouter("@id", SqlDbType.Int, ligne.Id)
+                            .AjouterDecimal("@quantite", 18, EchelleQuantite, Arrondir(quantite))
+                            .Ajouter("@uniteId", SqlDbType.Int, quantite is null ? null : uniteId),
+                        annulation);
+                    return new ResultatAjoutManuel(listeId, ligne.Id, Additionne: true);
+                }
+
+                var articleId = await s.ScalaireAsync<int>(
+                    sqlInserer,
+                    p =>
+                    {
+                        Cle(p);
+                        p.AjouterDecimal("@quantite", 18, EchelleQuantite, Arrondir(ajout.Quantite));
+                    },
+                    annulation);
+                return new ResultatAjoutManuel(listeId, articleId, Additionne: false);
+            },
+            annulation);
+    }
+
+    /// <summary>
+    /// Retire de la liste active un article ajouté à la main ou reporté. Un article qui vient des repas ne se retire pas :
+    /// la prochaine regénération le remettrait.
+    /// </summary>
+    /// <returns><c>false</c> si l'article n'existe plus, n'est pas sur la liste active ou vient des repas.</returns>
+    public async Task<bool> RetirerAsync(int articleId, SessionSql? session = null, CancellationToken annulation = default)
+    {
+        const string sql = """
+            DELETE a FROM dbo.ListeEpicerieArticle a
+            JOIN dbo.ListeEpicerie l ON l.Id = a.ListeId AND l.Statut = 'Active'
+            WHERE a.Id = @id AND (a.EstManuel = 1 OR a.EstReporte = 1);
+            """;
+        return await ExecuterAsync(session, sql, p => p.Ajouter("@id", SqlDbType.Int, articleId), annulation) > 0;
+    }
+
+    /// <summary>Nom d'une liste créée avant d'être générée (pour un ajout manuel ou des articles reportés).</summary>
+    public const string NomProchaineListe = "Prochaine liste d'épicerie";
+
     private async Task<ResultatRegeneration> RegenererDansAsync(
         SessionSql s, DateOnly debut, DateOnly fin, CancellationToken annulation)
     {

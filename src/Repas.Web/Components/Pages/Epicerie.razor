@@ -4,9 +4,12 @@
 @using Repas.Domaine.Mesures
 @using Repas.Domaine.Recettes
 @using Repas.Donnees
+@using Repas.Domaine.Referentiel
 @using Repas.Web.Authentification
+@using Repas.Web.Components.Recettes
 @inject DepotListeEpicerie DepotListe
 @inject DepotUnites DepotUnites
+@inject DepotCategories DepotCategories
 
 <PageTitle>Épicerie</PageTitle>
 
@@ -52,6 +55,60 @@ else
     </details>
 }
 
+@if (_charge)
+{
+    <section class="carte-formulaire carte-large ajout-article">
+        @if (_aAjouter is { } choisi)
+        {
+            <p class="titre-creation">Ajouter « @choisi.Nom »</p>
+            @if (_erreursAjout.Count > 0)
+            {
+                <div class="message-erreur" role="alert">
+                    @foreach (var erreur in _erreursAjout)
+                    {
+                        <div>@erreur</div>
+                    }
+                </div>
+            }
+            <div class="grille-2">
+                <div class="champ">
+                    <label for="ajout-quantite">Quantité (facultative)</label>
+                    <input id="ajout-quantite" @bind="_quantiteAjout" @bind:event="oninput" inputmode="decimal" autocomplete="off"
+                           placeholder="Ex. : 2, 1/2" @ref="_champQuantite" />
+                </div>
+                <div class="champ">
+                    <label for="ajout-unite">Unité</label>
+                    <select id="ajout-unite" @bind="_uniteAjout">
+                        @foreach (var groupe in _unites.GroupBy(u => u.TypeMesure))
+                        {
+                            <optgroup label="@LibelleType(groupe.Key)">
+                                @foreach (var unite in groupe)
+                                {
+                                    <option value="@unite.Id">@unite.Code</option>
+                                }
+                            </optgroup>
+                        }
+                    </select>
+                </div>
+            </div>
+            <div class="actions-page">
+                <button type="button" class="bouton-principal bouton-compact" disabled="@_enCours" @onclick="AjouterAsync">Ajouter à la liste</button>
+                <button type="button" class="bouton-secondaire" @onclick="AnnulerAjout">Annuler</button>
+            </div>
+        }
+        else if (_nomACreer is not null)
+        {
+            <CreationRapideIngredient NomInitial="@_nomACreer" Categories="_categories" Unites="_unites" ProposerNonAlimentaire="true"
+                                      AuCreation="ChoisirCree" AuAnnuler="() => _nomACreer = null" />
+        }
+        else
+        {
+            <RechercheIngredient @key="_cleRecherche" IdChamp="ajout-article" Libelle="Ajouter un article (aliment, papier, savon…)"
+                                 AuChoix="Choisir" AuCreer="nom => _nomACreer = nom" />
+        }
+    </section>
+}
+
 @if (_liste is { } liste && (liste.Liste.EstGeneree || liste.Articles.Count > 0))
 {
     <section class="liste-epicerie">
@@ -60,6 +117,10 @@ else
             @if (liste.Liste.DateGenerationUtc is { } generation)
             {
                 <p class="aide">Générée le @MomentLocal(generation) · @liste.Articles.Count article@(liste.Articles.Count > 1 ? "s" : "")</p>
+            }
+            else
+            {
+                <p class="aide">Pas encore générée : ces articles resteront quand vous la générerez à partir du calendrier.</p>
             }
         </div>
 
@@ -102,6 +163,11 @@ else
                                 </span>
                             }
                         </div>
+                        @if (article.PeutEtreRetire)
+                        {
+                            <button type="button" class="bouton-icone bouton-retirer-article" title="Retirer de la liste"
+                                    aria-label="Retirer @article.NomIngredient de la liste" @onclick="() => RetirerAsync(article)">✕</button>
+                        }
                     </li>
                 }
             </ul>
@@ -120,6 +186,18 @@ else
     private string? _message;
     private bool _messageEstErreur;
 
+    // Ajout manuel : l'article choisi dans le référentiel, puis sa quantité facultative.
+    private List<Unite> _unites = [];
+    private List<Categorie> _categories = [];
+    private (int Id, string Nom)? _aAjouter;
+    private string _quantiteAjout = string.Empty;
+    private int _uniteAjout;
+    private string? _nomACreer;
+    private List<string> _erreursAjout = [];
+    private ElementReference _champQuantite;
+    private bool _focusQuantite;
+    private Guid _cleRecherche = Guid.NewGuid();
+
     [CascadingParameter]
     private Task<AuthenticationState> EtatAuthentification { get; set; } = default!;
 
@@ -128,7 +206,110 @@ else
         // L'heure du serveur suit le fuseau de la famille (variable TZ du conteneur).
         _semaineCourante = Semaine.Contenant(DateOnly.FromDateTime(DateTime.Now));
         ChoisirSemaine(_semaineCourante);
-        _convertisseur = new ConvertisseurUnites(await DepotUnites.ListerAsync());
+        _unites = await DepotUnites.ListerAsync();
+        _categories = await DepotCategories.ListerAsync();
+        _convertisseur = new ConvertisseurUnites(_unites);
+        await ChargerAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focusQuantite)
+        {
+            _focusQuantite = false;
+            await _champQuantite.FocusAsync();
+        }
+    }
+
+    private static string LibelleType(TypeMesure type) => type switch
+    {
+        TypeMesure.Poids => "Poids",
+        TypeMesure.Volume => "Volume",
+        _ => "À la pièce",
+    };
+
+    private void Choisir(ResumeIngredient ingredient) =>
+        Preparer(ingredient.Id, ingredient.Nom, _unites.FirstOrDefault(u => u.Code == ingredient.UniteReference)?.Id);
+
+    private void ChoisirCree(CreationRapideIngredient.IngredientCree cree)
+    {
+        _nomACreer = null;
+        Preparer(cree.Id, cree.Nom, cree.UniteReferenceId);
+    }
+
+    /// <summary>L'article est choisi : on demande sa quantité, dans l'unité de ses totaux par défaut.</summary>
+    private void Preparer(int id, string nom, int? uniteReferenceId)
+    {
+        _aAjouter = (id, nom);
+        _quantiteAjout = string.Empty;
+        _uniteAjout = uniteReferenceId ?? _unites.FirstOrDefault()?.Id ?? 0;
+        _erreursAjout = [];
+        _focusQuantite = true;
+    }
+
+    private void AnnulerAjout()
+    {
+        _aAjouter = null;
+        _erreursAjout = [];
+        _cleRecherche = Guid.NewGuid();
+    }
+
+    private async Task AjouterAsync()
+    {
+        if (_aAjouter is not { } choisi)
+        {
+            return;
+        }
+
+        _message = null;
+        if (!AnalyseQuantite.EssayerLire(_quantiteAjout, out var quantite))
+        {
+            _erreursAjout = [$"La quantité « {_quantiteAjout.Trim()} » n'est pas reconnue."];
+            return;
+        }
+
+        // Sans quantité, l'unité ne compte pas : « Papier de toilette », tout simplement.
+        var ajout = new AjoutManuel(choisi.Id, quantite, quantite is null ? null : _uniteAjout);
+        _erreursAjout = ajout.Valider().ToList();
+        if (_erreursAjout.Count > 0)
+        {
+            return;
+        }
+
+        _enCours = true;
+        try
+        {
+            var auteur = (await EtatAuthentification).User.ObtenirIdUtilisateur()
+                ?? throw new InvalidOperationException("Aucun utilisateur connecté.");
+            var resultat = await DepotListe.AjouterManuelAsync(ajout, auteur);
+            Afficher(
+                resultat.Additionne ? $"« {choisi.Nom} » était déjà sur la liste : la quantité a été ajoutée." : $"« {choisi.Nom} » ajouté à la liste.",
+                erreur: false);
+            AnnulerAjout();
+            await ChargerAsync();
+        }
+        catch (AjoutManuelRefuseException ex)
+        {
+            _erreursAjout = [ex.Message];
+        }
+        finally
+        {
+            _enCours = false;
+        }
+    }
+
+    private async Task RetirerAsync(ArticleListe article)
+    {
+        _message = null;
+        if (await DepotListe.RetirerAsync(article.Id))
+        {
+            Afficher($"« {article.NomIngredient} » retiré de la liste.", erreur: false);
+        }
+        else
+        {
+            Afficher($"« {article.NomIngredient} » n'était plus sur la liste.", erreur: true);
+        }
+
         await ChargerAsync();
     }
 

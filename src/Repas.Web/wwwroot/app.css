@@ -1265,3 +1265,19 @@ a.bouton-secondaire {
 .aide + .suggestions-rapides {
     margin-top: 0.5rem;
 }
+
+.ajout-article {
+    margin-top: 0;
+    margin-bottom: 1rem;
+}
+
+.ajout-article .titre-creation {
+    margin-top: 0;
+    font-weight: 600;
+}
+
+.bouton-retirer-article {
+    flex: none;
+    margin-left: auto;
+    align-self: center;
+}

@@ -350,6 +350,138 @@ public sealed class DepotListeEpicerieTests : IAsyncLifetime
         Assert.Null(await _depot.TrouverActiveAsync());
     }
 
+    // --- Ajout manuel (story 5.5)
+
+    private async Task<int> IngredientAsync(string nom) =>
+        await _baseDeTest.ScalaireAsync<int>($"SELECT Id FROM dbo.Ingredient WHERE Nom = N'{nom}';");
+
+    [Fact]
+    public async Task AjouterManuel_SansListe_CreeLaProchaineListeSansPeriode()
+    {
+        var papier = await IngredientAsync("Papier de toilette");
+
+        var resultat = await _depot.AjouterManuelAsync(new AjoutManuel(papier, null, null), _idMarie);
+
+        Assert.False(resultat.Additionne);
+        var (liste, articles) = await ActiveAsync();
+        Assert.Equal((resultat.ListeId, DepotListeEpicerie.NomProchaineListe, false), (liste.Id, liste.Nom, liste.EstGeneree));
+        var article = Assert.Single(articles);
+        Assert.Equal((papier, (decimal?)null, true, true), (article.IngredientId, article.Quantite, article.EstManuel, article.PeutEtreRetire));
+    }
+
+    [Fact]
+    public async Task AjouterManuel_PuisGenerer_LaListeGardeLArticle()
+    {
+        var papier = await IngredientAsync("Papier de toilette");
+        await _depot.AjouterManuelAsync(new AjoutManuel(papier, null, null), _idMarie);
+        var crepes = await RecetteAsync("Crêpes", 4, Ligne(_lait, 500m, "ml"));
+        await PlanifierAsync(Dimanche, Plage.Diner, crepes, 4);
+
+        var generation = await _depot.GenererAsync(Dimanche, Samedi, _idMarie);
+
+        Assert.Equal(StatutGeneration.Generee, generation.Statut);
+        Assert.Equal(2, (await ActiveAsync()).Articles.Count);
+    }
+
+    [Fact]
+    public async Task AjouterManuel_LeMemeArticleDansLaMemeUnite_AdditionneLesQuantites()
+    {
+        await _depot.AjouterManuelAsync(new AjoutManuel(_lait, 1m, Unite("l")), _idMarie);
+
+        var second = await _depot.AjouterManuelAsync(new AjoutManuel(_lait, 2m, Unite("l")), _idMarie);
+
+        Assert.True(second.Additionne);
+        var lait = Assert.Single((await ActiveAsync()).Articles);
+        Assert.Equal((3m, "l"), (lait.Quantite!.Value, lait.CodeUnite!));
+    }
+
+    [Fact]
+    public async Task AjouterManuel_UneQuantiteSurUnArticleSansQuantite_LaComplete()
+    {
+        var papier = await IngredientAsync("Papier de toilette");
+        await _depot.AjouterManuelAsync(new AjoutManuel(papier, null, null), _idMarie);
+
+        await _depot.AjouterManuelAsync(new AjoutManuel(papier, 2m, Unite("unité")), _idMarie);
+        await _depot.AjouterManuelAsync(new AjoutManuel(papier, null, null), _idMarie); // déjà là : rien ne change
+
+        var article = Assert.Single((await ActiveAsync()).Articles);
+        Assert.Equal((2m, "unité"), (article.Quantite!.Value, article.CodeUnite!));
+    }
+
+    [Fact]
+    public async Task AjouterManuel_UneAutreUnite_DonneUneAutreLigne()
+    {
+        await _depot.AjouterManuelAsync(new AjoutManuel(_lait, 1m, Unite("l")), _idMarie);
+
+        var second = await _depot.AjouterManuelAsync(new AjoutManuel(_lait, 500m, Unite("ml")), _idMarie);
+
+        Assert.False(second.Additionne);
+        Assert.Equal(2, (await ActiveAsync()).Articles.Count);
+    }
+
+    [Fact]
+    public async Task AjouterManuel_UnArticleDejaCoche_DonneUneNouvelleLigne()
+    {
+        var premier = await _depot.AjouterManuelAsync(new AjoutManuel(_lait, 1m, Unite("l")), _idMarie);
+        await CocherAsync(premier.ArticleId);
+
+        var second = await _depot.AjouterManuelAsync(new AjoutManuel(_lait, 1m, Unite("l")), _idMarie);
+
+        Assert.NotEqual(premier.ArticleId, second.ArticleId);
+    }
+
+    [Fact]
+    public async Task AjouterManuel_NeTouchePasAuxArticlesDesRepas()
+    {
+        var crepes = await RecetteAsync("Crêpes", 4, Ligne(_lait, 500m, "ml"));
+        await PlanifierAsync(Dimanche, Plage.Diner, crepes, 4);
+        await _depot.GenererAsync(Dimanche, Samedi, _idMarie);
+
+        var resultat = await _depot.AjouterManuelAsync(new AjoutManuel(_lait, 250m, Unite("ml")), _idMarie);
+
+        Assert.False(resultat.Additionne);
+        Assert.Equal([500m, 250m], (await ActiveAsync()).Articles.OrderBy(a => a.EstManuel).Select(a => a.Quantite!.Value));
+    }
+
+    [Fact]
+    public async Task AjouterManuel_UnIngredientDesactive_EstRefuse()
+    {
+        await _baseDeTest.ExecuterAsync($"UPDATE dbo.Ingredient SET Actif = 0 WHERE Id = {_lait};");
+
+        await Assert.ThrowsAsync<AjoutManuelRefuseException>(() => _depot.AjouterManuelAsync(new AjoutManuel(_lait, null, null), _idMarie));
+        Assert.Null(await _depot.TrouverActiveAsync());
+    }
+
+    [Fact]
+    public async Task AjouterManuel_InvalideEstRefuse()
+    {
+        await Assert.ThrowsAsync<AjoutManuelRefuseException>(() => _depot.AjouterManuelAsync(new AjoutManuel(_lait, 2m, null), _idMarie));
+    }
+
+    [Fact]
+    public async Task Retirer_UnArticleManuel()
+    {
+        var ajout = await _depot.AjouterManuelAsync(new AjoutManuel(_lait, 1m, Unite("l")), _idMarie);
+
+        Assert.True(await _depot.RetirerAsync(ajout.ArticleId));
+
+        Assert.Empty((await ActiveAsync()).Articles);
+        Assert.False(await _depot.RetirerAsync(ajout.ArticleId));
+    }
+
+    [Fact]
+    public async Task Retirer_UnArticleDesRepas_EstRefuse()
+    {
+        var crepes = await RecetteAsync("Crêpes", 4, Ligne(_lait, 500m, "ml"));
+        await PlanifierAsync(Dimanche, Plage.Diner, crepes, 4);
+        await _depot.GenererAsync(Dimanche, Samedi, _idMarie);
+        var lait = await ArticleAsync(_lait);
+
+        Assert.False(lait.PeutEtreRetire);
+        Assert.False(await _depot.RetirerAsync(lait.Id));
+        Assert.Single((await ActiveAsync()).Articles);
+    }
+
     [Fact]
     public async Task TrouverActive_SansListe_RetourneNull()
     {

@@ -43,6 +43,14 @@
         </div>
     </div>
 
+    @if (ProposerNonAlimentaire)
+    {
+        <div class="champ-case">
+            <input id="creation-non-alimentaire" type="checkbox" @bind="_nonAlimentaire" />
+            <label for="creation-non-alimentaire">Article non alimentaire (papier, savon, produit d'entretien…)</label>
+        </div>
+    }
+
     <div class="actions-page">
         <button type="button" class="bouton-principal bouton-compact" disabled="@_enCours" @onclick="CreerAsync">Créer et ajouter</button>
         <button type="button" class="bouton-secondaire" @onclick="() => AuAnnuler.InvokeAsync()">Annuler</button>
@@ -72,6 +80,12 @@
     [Parameter]
     public EventCallback AuAnnuler { get; set; }
 
+    /// <summary>Offre de marquer l'article comme non alimentaire (utile depuis la liste d'épicerie, pas depuis une recette).</summary>
+    [Parameter]
+    public bool ProposerNonAlimentaire { get; set; }
+
+    private bool _nonAlimentaire;
+
     protected override void OnInitialized() => _nom = NomInitial;
 
     private async Task CreerAsync()
@@ -79,7 +93,7 @@
         // L'unité des totaux est l'unité de base du type choisi (g, ml ou unité).
         var unite = Unites.FirstOrDefault(u => u.TypeMesure == _typeMesure && u.FacteurVersReference == 1);
         var fiche = new FicheIngredient(
-            0, _nom.Trim(), _categorieId, _typeMesure, unite?.Id ?? 0, null, null, EstAlimentaire: true, Actif: true, []);
+            0, _nom.Trim(), _categorieId, _typeMesure, unite?.Id ?? 0, null, null, EstAlimentaire: !_nonAlimentaire, Actif: true, []);
 
         _erreurs = ValidationIngredient.Valider(fiche, Unites.ToList()).ToList();
         if (_erreurs.Count > 0)
