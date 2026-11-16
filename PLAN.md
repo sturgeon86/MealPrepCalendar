@@ -76,7 +76,7 @@ L'app tourne sur Unraid en réseau local seulement (`http://192.168.1.10:8096`, 
 - [x] **5.4 Regénérer** : recalcule les articles venant des repas, conserve les articles manuels, reportés et les cases cochées.
   - *Décidé :* une case cochée est décochée si la quantité a augmenté (ce qui a été acheté ne suffit plus) ; la période peut changer à la regénération.
 - [x] **5.5 Ajout manuel** d'un article du référentiel (alimentaire ou non), avec quantité optionnelle.
-- [ ] **5.6 Affichage par catégorie**, selon l'ordre générique, avec unités lisibles (1500 ml → 1,5 l) et alertes de conversion.
+- [x] **5.6 Affichage par catégorie**, selon l'ordre générique, avec unités lisibles (1500 ml → 1,5 l) et alertes de conversion.
 
 ## Itération 6 — Mode magasin
 - [ ] **6.1 Écran magasin** pour cellulaire : grandes cases à cocher, articles cochés grisés ou déplacés en bas, catégories repliables.

@@ -130,47 +130,66 @@ else
         }
         else
         {
-            <ul class="liste-cartes articles-liste">
-                @foreach (var article in liste.Articles)
-                {
-                    var alerte = AlertesListe.Verifier(article, _convertisseur);
-                    <li @key="article.Id" class="@(alerte != RaisonEchecConversion.Aucune ? "article-alerte" : null)">
-                        <span class="quantite-article">@Quantite(article)</span>
-                        <div class="infos-ligne">
-                            <span class="nom-ligne">
-                                @article.NomIngredient
-                                @if (article.NbRecettes > 1)
-                                {
-                                    <span class="details-ligne"> (@article.NbRecettes recettes)</span>
-                                }
-                            </span>
-                            <span class="details-ligne">
-                                @article.Categorie
-                                @if (article.EstManuel)
-                                {
-                                    <span class="pastille">Ajout manuel</span>
-                                }
-                                @if (article.EstReporte)
-                                {
-                                    <span class="pastille">Reporté</span>
-                                }
-                            </span>
-                            @if (alerte != RaisonEchecConversion.Aucune)
-                            {
-                                <span class="texte-alerte">
-                                    ⚠ @AlertesListe.Decrire(alerte)
-                                    <a href="ingredients/@article.IngredientId">Compléter la fiche</a>
-                                </span>
-                            }
-                        </div>
-                        @if (article.PeutEtreRetire)
+            var alertes = liste.Articles.Count(a => AlertesListe.Verifier(a, _convertisseur) != RaisonEchecConversion.Aucune);
+            @if (alertes > 0)
+            {
+                <p class="resume-alertes" role="note">
+                    ⚠ @alertes ligne@(alertes > 1 ? "s" : "") n'@(alertes > 1 ? "ont" : "a") pas pu être regroupée@(alertes > 1 ? "s" : "")
+                    avec le reste : complétez la fiche de l'ingrédient, puis regénérez la liste.
+                </p>
+            }
+
+            @* Une section par catégorie, dans l'ordre du trajet en magasin. *@
+            @foreach (var groupe in AffichageListe.GrouperParCategorie(liste.Articles))
+            {
+                <section class="categorie-liste" aria-labelledby="categorie-@groupe.Ordre-@groupe.Articles[0].Id">
+                    <h3 id="categorie-@groupe.Ordre-@groupe.Articles[0].Id" class="titre-categorie">
+                        @groupe.Categorie <span class="compte-categorie">@groupe.Articles.Count</span>
+                    </h3>
+                    <ul class="liste-cartes articles-liste">
+                        @foreach (var article in groupe.Articles)
                         {
-                            <button type="button" class="bouton-icone bouton-retirer-article" title="Retirer de la liste"
-                                    aria-label="Retirer @article.NomIngredient de la liste" @onclick="() => RetirerAsync(article)">✕</button>
+                            var alerte = AlertesListe.Verifier(article, _convertisseur);
+                            <li @key="article.Id" class="@ClassesArticle(article, alerte)">
+                                <span class="quantite-article">@AffichageListe.Quantite(article, _unitesParId)</span>
+                                <div class="infos-ligne">
+                                    <span class="nom-ligne">
+                                        @article.NomIngredient
+                                        @if (article.NbRecettes > 1)
+                                        {
+                                            <span class="details-ligne"> (@article.NbRecettes recettes)</span>
+                                        }
+                                        @if (article.EstManuel)
+                                        {
+                                            <span class="pastille">Ajout manuel</span>
+                                        }
+                                        @if (article.EstReporte)
+                                        {
+                                            <span class="pastille">Reporté</span>
+                                        }
+                                        @if (article.EstCoche)
+                                        {
+                                            <span class="visuellement-cache"> (coché)</span>
+                                        }
+                                    </span>
+                                    @if (alerte != RaisonEchecConversion.Aucune)
+                                    {
+                                        <span class="texte-alerte">
+                                            ⚠ @AlertesListe.Decrire(alerte)
+                                            <a href="ingredients/@article.IngredientId">Compléter la fiche</a>
+                                        </span>
+                                    }
+                                </div>
+                                @if (article.PeutEtreRetire)
+                                {
+                                    <button type="button" class="bouton-icone bouton-retirer-article" title="Retirer de la liste"
+                                            aria-label="Retirer @article.NomIngredient de la liste" @onclick="() => RetirerAsync(article)">✕</button>
+                                }
+                            </li>
                         }
-                    </li>
-                }
-            </ul>
+                    </ul>
+                </section>
+            }
         }
     </section>
 }
@@ -179,6 +198,7 @@ else
     private bool _charge;
     private ListeAvecArticles? _liste;
     private ConvertisseurUnites _convertisseur = new([]);
+    private Dictionary<int, Unite> _unitesParId = [];
     private Semaine _semaineCourante;
     private DateOnly _debut;
     private DateOnly _fin;
@@ -209,6 +229,7 @@ else
         _unites = await DepotUnites.ListerAsync();
         _categories = await DepotCategories.ListerAsync();
         _convertisseur = new ConvertisseurUnites(_unites);
+        _unitesParId = _unites.ToDictionary(u => u.Id);
         await ChargerAsync();
     }
 
@@ -467,8 +488,21 @@ else
         _messageEstErreur = erreur;
     }
 
-    private static string Quantite(ArticleListe article) =>
-        article.Quantite is { } quantite && article.CodeUnite is { } code ? AffichageQuantite.Formater(quantite, code) : "—";
+    private static string? ClassesArticle(ArticleListe article, RaisonEchecConversion alerte)
+    {
+        var classes = new List<string>();
+        if (alerte != RaisonEchecConversion.Aucune)
+        {
+            classes.Add("article-alerte");
+        }
+
+        if (article.EstCoche)
+        {
+            classes.Add("article-coche");
+        }
+
+        return classes.Count == 0 ? null : string.Join(' ', classes);
+    }
 
     private static string MomentLocal(DateTime utc)
     {
