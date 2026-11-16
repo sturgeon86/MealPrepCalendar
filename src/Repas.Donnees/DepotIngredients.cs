@@ -1,5 +1,6 @@
 using System.Data;
 using Microsoft.Data.SqlClient;
+using Repas.Domaine.Import;
 using Repas.Domaine.Mesures;
 using Repas.Domaine.Referentiel;
 
@@ -70,6 +71,30 @@ public sealed class DepotIngredients : DepotBase
                 .Ajouter("@inclureInactifs", SqlDbType.Bit, inclureInactifs)
                 .Ajouter("@motif", SqlDbType.NVarChar, 400, motif),
             annulation);
+    }
+
+    /// <summary>Les ingrédients actifs avec leurs synonymes, pour rapprocher les noms d'une recette importée.</summary>
+    public async Task<List<IngredientConnu>> ListerPourRapprochementAsync(
+        SessionSql? session = null, CancellationToken annulation = default)
+    {
+        const string sql = """
+            SELECT i.Id, i.Nom, s.Synonyme
+            FROM dbo.Ingredient i
+            LEFT JOIN dbo.IngredientSynonyme s ON s.IngredientId = i.Id
+            WHERE i.Actif = 1
+            ORDER BY i.Nom, i.Id, s.Id;
+            """;
+
+        var lignes = await ListerAsync(
+            session,
+            sql,
+            l => (Id: l.GetInt32(0), Nom: l.GetString(1), Synonyme: l.IsDBNull(2) ? null : l.GetString(2)),
+            annulation: annulation);
+
+        return lignes
+            .GroupBy(l => (l.Id, l.Nom))
+            .Select(g => new IngredientConnu(g.Key.Id, g.Key.Nom, g.Select(l => l.Synonyme).OfType<string>().ToList()))
+            .ToList();
     }
 
     /// <summary>La fiche complète, avec ses synonymes, ou <c>null</c> si l'ingrédient n'existe pas.</summary>

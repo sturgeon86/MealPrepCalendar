@@ -502,6 +502,40 @@ a.bouton-secondaire {
 .zone-optionnel { grid-area: optionnel; margin: 0; }
 .zone-actions { grid-area: actions; }
 
+/* Import (story 8.3) : sous la ligne, le texte lu et le rapprochement à confirmer, sur toute la largeur. */
+.zone-rapprochement {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.375rem 0.5rem;
+    font-size: 0.9rem;
+}
+
+.ligne-a-rapprocher {
+    background: #fff8e6;
+    border-left: 3px solid #d69e2e;
+    padding-left: 0.5rem;
+}
+
+.texte-lu {
+    color: #52606d;
+    font-style: italic;
+}
+
+.statut-rapprochement {
+    font-weight: 600;
+}
+
+.import-texte textarea {
+    width: 100%;
+    min-height: 16rem;
+    padding: 0.5rem 0.625rem;
+    border: 1px solid #9aa5b1;
+    border-radius: 0.375rem;
+    font: inherit;
+}
+
 @media (max-width: 40rem) {
     .ligne-ingredient {
         grid-template-columns: 1fr 1fr;

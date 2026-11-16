@@ -76,7 +76,10 @@ public static class ValidationRecette
 
             if (ligne.IngredientId <= 0)
             {
-                erreurs.Add($"Choisissez l'ingrédient de la ligne {i + 1}.");
+                // Une ligne importée pas encore rapprochée porte le texte lu : on le montre pour la retrouver.
+                erreurs.Add(string.IsNullOrEmpty(ligne.NomIngredient)
+                    ? $"Choisissez l'ingrédient de la ligne {i + 1}."
+                    : $"Choisissez l'ingrédient de la ligne {i + 1} ({nom}) ou créez-le.");
             }
 
             if (ligne.Quantite is not null && ligne.UniteId is null)

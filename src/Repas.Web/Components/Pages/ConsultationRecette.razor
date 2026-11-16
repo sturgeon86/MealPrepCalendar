@@ -115,6 +115,16 @@ else
                 <p class="notes-lecture">@_recette.Notes</p>
             </section>
         }
+
+        @if (_recette.Source != SourceRecette.Manuelle)
+        {
+            <p class="aide">@(_recette.Source switch
+            {
+                SourceRecette.Texte => "Recette importée d'un texte collé.",
+                SourceRecette.Web => "Recette importée d'un site web.",
+                _ => "Recette importée d'une photo.",
+            })</p>
+        }
     </article>
 }
 

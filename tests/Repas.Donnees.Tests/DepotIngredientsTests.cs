@@ -1,3 +1,4 @@
+using Repas.Domaine.Import;
 using Repas.Domaine.Mesures;
 using Repas.Domaine.Referentiel;
 using Repas.Donnees.Tests.Outils;
@@ -120,6 +121,23 @@ public sealed class DepotIngredientsTests : IAsyncLifetime
         Assert.Equal("Épicerie sèche", quinoa.Categorie);
         Assert.Equal("g", quinoa.UniteReference);
         Assert.Equal("Graine de quinoa, Riz inca", quinoa.Synonymes);
+    }
+
+    // --- Rapprochement (import de recettes)
+
+    [Fact]
+    public async Task ListerPourRapprochement_ActifsAvecLeursSynonymes()
+    {
+        var avecSynonymes = await _depot.AjouterAsync(NouvelleFiche("Quinoa", "Quinoa blanc", "Quinoa royal"));
+        var inactif = await _depot.AjouterAsync(NouvelleFiche("Boulgour") with { Actif = false });
+
+        var connus = await _depot.ListerPourRapprochementAsync();
+
+        Assert.True(connus.Count > 100, "Les données de base sont toutes là.");
+        Assert.Equal(["Quinoa blanc", "Quinoa royal"], connus.Single(i => i.Id == avecSynonymes).Synonymes.Order());
+        Assert.Empty(connus.Single(i => i.Nom == "Sel").Synonymes);
+        Assert.DoesNotContain(connus, i => i.Id == inactif);
+        Assert.Equal(connus.Count, connus.Select(i => i.Id).Distinct().Count());
     }
 
     // --- Ajout et modification

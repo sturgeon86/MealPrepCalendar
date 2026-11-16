@@ -1,5 +1,7 @@
 @page "/recettes/nouvelle"
 @page "/recettes/{Id:int}/modifier"
+@page "/recettes/importer"
+@using Repas.Domaine.Import
 @using Repas.Domaine.Mesures
 @using Repas.Domaine.Recettes
 @using Repas.Domaine.Referentiel
@@ -12,9 +14,10 @@
 @inject ILogger<FicheRecettePage> Journal
 @inject DepotCategories DepotCategories
 @inject DepotUnites DepotUnites
+@inject DepotIngredients DepotIngredients
 @inject NavigationManager Navigation
 
-<PageTitle>@(EstNouvelle ? "Nouvelle recette" : _nom.Length > 0 ? _nom : "Recette")</PageTitle>
+<PageTitle>@(_estImport ? "Importer une recette" : EstNouvelle ? "Nouvelle recette" : _nom.Length > 0 ? _nom : "Recette")</PageTitle>
 
 <p><a href="@(EstNouvelle ? "recettes" : $"recettes/{Id}")">@(EstNouvelle ? "← Recettes" : "← Retour à la recette")</a></p>
 
@@ -27,9 +30,54 @@ else if (!_charge)
 {
     <p>Chargement…</p>
 }
+else if (_estImport && !_brouillonLu)
+{
+    <h1>Importer une recette</h1>
+
+    @if (_erreurs.Count > 0)
+    {
+        <div class="message-erreur" role="alert">
+            @foreach (var erreur in _erreurs)
+            {
+                <p>@erreur</p>
+            }
+        </div>
+    }
+
+    <section class="carte-formulaire carte-large import-texte">
+        <h2>Coller le texte</h2>
+        <p class="aide">
+            Collez la recette : le titre sur la première ligne, puis un ingrédient par ligne et les étapes.
+            Les intertitres « Ingrédients » et « Préparation » aident la lecture. Rien n'est enregistré avant
+            que vous ayez vérifié la recette à l'étape suivante.
+        </p>
+        <div class="champ">
+            <label for="texte-recette">Texte de la recette</label>
+            <textarea id="texte-recette" @bind="_texteImport"
+                      placeholder="@ExempleTexte"></textarea>
+        </div>
+        <div class="actions-page">
+            <button type="button" class="bouton-principal bouton-compact" disabled="@_enCours" @onclick="LireTexteAsync">Lire la recette</button>
+        </div>
+    </section>
+}
 else
 {
-    <h1>@(EstNouvelle ? "Nouvelle recette" : "Modifier la recette")</h1>
+    <h1>@(_estImport ? "Vérifier la recette importée" : EstNouvelle ? "Nouvelle recette" : "Modifier la recette")</h1>
+
+    @if (_estImport)
+    {
+        var aRapprocher = _lignes.Count(l => l.Statut is not null);
+        <p class="aide">
+            @if (aRapprocher > 0)
+            {
+                <strong>@aRapprocher @(aRapprocher > 1 ? "ingrédients sont" : "ingrédient est") à confirmer ou à choisir</strong>
+                <text> (surlignés ci-dessous). </text>
+            }
+            Vérifiez aussi les quantités et les étapes, puis enregistrez.
+            <button type="button" class="bouton-lien-texte" @onclick="() => _brouillonLu = false">Revenir au texte</button>
+        </p>
+    }
 
     @if (_erreurs.Count > 0)
     {
@@ -111,7 +159,7 @@ else
                 {
                     var ligne = _lignes[i];
                     var position = i;
-                    <li @key="ligne.Cle" class="ligne-ingredient">
+                    <li @key="ligne.Cle" class="ligne-ingredient @(ligne.Statut is not null ? "ligne-a-rapprocher" : null)">
                         <span class="nom-ligne zone-nom">@ligne.NomIngredient</span>
                         <div class="zone-quantite">
                             <label class="visuellement-cache" for="quantite-@ligne.Cle">Quantité de @ligne.NomIngredient</label>
@@ -147,14 +195,75 @@ else
                             <button type="button" class="bouton-icone" aria-label="Descendre @ligne.NomIngredient" title="Descendre"
                                     disabled="@(position == _lignes.Count - 1)" @onclick="() => Deplacer(_lignes, position, 1)">↓</button>
                             <button type="button" class="bouton-icone" aria-label="Retirer @ligne.NomIngredient" title="Retirer"
-                                    @onclick="() => _lignes.RemoveAt(position)">✕</button>
+                                    @onclick="() => RetirerLigne(position)">✕</button>
                         </span>
+                        @if (ligne.TexteLu is not null)
+                        {
+                            @* Import : le texte lu, et l'ingrédient du référentiel à confirmer, à choisir ou à créer. *@
+                            <div class="zone-rapprochement">
+                                <span class="texte-lu">Lu : « @ligne.TexteLu »</span>
+                                @if (_ligneEnChangement == ligne)
+                                {
+                                    @if (_nomACreer is null)
+                                    {
+                                        <RechercheIngredient IdChamp="changer-ingredient" Libelle="Chercher l'ingrédient"
+                                                             AuChoix="i => ChoisirPourLigne(ligne, i.Id, i.Nom, i.UniteReference)"
+                                                             AuCreer="CommencerCreation" />
+                                        <button type="button" class="bouton-secondaire bouton-mini" @onclick="AnnulerChangement">Annuler</button>
+                                    }
+                                    else
+                                    {
+                                        <CreationRapideIngredient NomInitial="@_nomACreer" Categories="_categories" Unites="_unites"
+                                                                  AuCreation="AjouterIngredientCree" AuAnnuler="AnnulerChangement" />
+                                    }
+                                }
+                                else
+                                {
+                                    switch (ligne.Statut)
+                                    {
+                                        case StatutRapprochement.Approche:
+                                            <span class="statut-rapprochement">Est-ce « @ligne.NomIngredient » ?</span>
+                                            <button type="button" class="bouton-principal bouton-mini" @onclick="() => ligne.Statut = null">Oui</button>
+                                            @foreach (var autre in ligne.Suggestions.Skip(1))
+                                            {
+                                                <button type="button" class="bouton-secondaire bouton-mini"
+                                                        @onclick="() => ChoisirPourLigne(ligne, autre.IngredientId, autre.Nom, null)">@autre.Nom</button>
+                                            }
+                                            <button type="button" class="bouton-lien-texte" @onclick="() => Changer(ligne)">Autre…</button>
+                                            break;
+                                        case StatutRapprochement.Ambigu:
+                                            <span class="statut-rapprochement">Lequel ?</span>
+                                            @foreach (var suggestion in ligne.Suggestions)
+                                            {
+                                                <button type="button" class="bouton-secondaire bouton-mini"
+                                                        @onclick="() => ChoisirPourLigne(ligne, suggestion.IngredientId, suggestion.Nom, null)">@suggestion.Nom</button>
+                                            }
+                                            <button type="button" class="bouton-lien-texte" @onclick="() => Changer(ligne)">Autre…</button>
+                                            break;
+                                        case StatutRapprochement.ACreer:
+                                            <span class="statut-rapprochement">Absent du référentiel.</span>
+                                            <button type="button" class="bouton-principal bouton-mini"
+                                                    @onclick="() => CreerPourLigne(ligne)">Créer « @ligne.NomIngredient »</button>
+                                            <button type="button" class="bouton-lien-texte" @onclick="() => Changer(ligne)">Chercher…</button>
+                                            break;
+                                        default:
+                                            <span>✓</span>
+                                            <button type="button" class="bouton-lien-texte" @onclick="() => Changer(ligne)">Changer l'ingrédient</button>
+                                            break;
+                                    }
+                                }
+                            </div>
+                        }
                     </li>
                 }
             </ol>
         }
 
-        @if (_nomACreer is null)
+        @if (_ligneEnChangement is not null)
+        {
+            @* Un seul ingrédient se cherche ou se crée à la fois : celui de la ligne en cours. *@
+        }
+        else if (_nomACreer is null)
         {
             <RechercheIngredient IdChamp="ajout-ingredient" AuChoix="AjouterIngredient" AuCreer="CommencerCreation" />
         }
@@ -258,6 +367,16 @@ else
     private string _nouvelleEtiquette = string.Empty;
     private string? _nomACreer;
 
+    // Import (story 8.3) : le texte collé, puis le brouillon à vérifier ; rien n'est enregistré avant « Enregistrer ».
+    private bool _estImport;
+    private bool _brouillonLu;
+    private string _texteImport = string.Empty;
+    private RapprochementIngredients? _rapprochement;
+    private ModeleLigne? _ligneEnChangement;
+
+    private const string ExempleTexte =
+        "Pâté chinois\nPortions : 6\n\nIngrédients\n1 lb de boeuf haché\n1 oignon, haché\n…\n\nPréparation\n1. Préchauffer le four…";
+
     // Photo : celle enregistrée, et le changement en attente (nouvelle photo ou retrait) jusqu'à l'enregistrement.
     private string? _photoChemin;
     private byte[]? _nouvellePhoto;
@@ -300,6 +419,9 @@ else
         _introuvable = false;
         _erreurs = [];
         _nomACreer = null;
+        _ligneEnChangement = null;
+        _estImport = Navigation.ToBaseRelativePath(Navigation.Uri).StartsWith("recettes/importer", StringComparison.OrdinalIgnoreCase);
+        _brouillonLu = false;
         _photoChemin = null;
         _nouvellePhoto = null;
         _apercuNouvellePhoto = null;
@@ -370,7 +492,98 @@ else
     private void AjouterIngredientCree(CreationRapideIngredient.IngredientCree cree)
     {
         _nomACreer = null;
+        if (_ligneEnChangement is { } ligne)
+        {
+            _rapprochement = null; // Le référentiel a changé : il sera relu au prochain import.
+            ChoisirPourLigne(ligne, cree.Id, cree.Nom, null, cree.UniteReferenceId);
+            return;
+        }
+
         _lignes.Add(new ModeleLigne { IngredientId = cree.Id, NomIngredient = cree.Nom, UniteId = cree.UniteReferenceId });
+    }
+
+    private async Task LireTexteAsync()
+    {
+        _erreurs = [];
+        var brouillon = LectureTexteRecette.Lire(_texteImport);
+        if (brouillon.Ingredients.Count == 0)
+        {
+            _erreurs = ["Aucun ingrédient n'a été trouvé. Mettez un ingrédient par ligne, sous un intertitre « Ingrédients » ou en commençant chaque ligne par sa quantité."];
+            return;
+        }
+
+        _enCours = true;
+        try
+        {
+            _rapprochement ??= new RapprochementIngredients(await DepotIngredients.ListerPourRapprochementAsync());
+        }
+        finally
+        {
+            _enCours = false;
+        }
+
+        _nom = brouillon.Nom.Length > ValidationRecette.LongueurMaxNom ? brouillon.Nom[..ValidationRecette.LongueurMaxNom] : brouillon.Nom;
+        _portions = brouillon.Portions is { } portions and >= 1 and <= ValidationRecette.PortionsMax ? portions : 4;
+        _tempsPreparation = brouillon.TempsPreparationMin;
+        _tempsCuisson = brouillon.TempsCuissonMin;
+        _notes = brouillon.Notes;
+        _source = brouillon.Source;
+        _etapes = brouillon.Etapes.Select(t => new ModeleEtape { Texte = t }).ToList();
+        if (_etapes.Count == 0)
+        {
+            _etapes.Add(new ModeleEtape());
+        }
+
+        _lignes = PreparationImport.Preparer(brouillon.Ingredients, _rapprochement)
+            .Select(i => ModeleLigne.DepuisImport(i, _unites))
+            .ToList();
+        _ligneEnChangement = null;
+        _nomACreer = null;
+        _brouillonLu = true;
+    }
+
+    private void Changer(ModeleLigne ligne)
+    {
+        _nomACreer = null;
+        _ligneEnChangement = ligne;
+    }
+
+    private void CreerPourLigne(ModeleLigne ligne)
+    {
+        _ligneEnChangement = ligne;
+        // Le référentiel écrit ses noms avec une majuscule : « safran » devient « Safran ».
+        _nomACreer = ligne.NomLu.Length > 0 ? char.ToUpper(ligne.NomLu[0], System.Globalization.CultureInfo.GetCultureInfo("fr-CA")) + ligne.NomLu[1..] : ligne.NomLu;
+    }
+
+    private void AnnulerChangement()
+    {
+        _ligneEnChangement = null;
+        _nomACreer = null;
+    }
+
+    /// <summary>L'ingrédient du référentiel est choisi pour une ligne importée : elle est rapprochée.</summary>
+    /// <param name="uniteReference">Code de l'unité des totaux, proposée si la ligne n'en a pas encore.</param>
+    private void ChoisirPourLigne(ModeleLigne ligne, int ingredientId, string nom, string? uniteReference, int? uniteReferenceId = null)
+    {
+        ligne.IngredientId = ingredientId;
+        ligne.NomIngredient = nom;
+        ligne.Statut = null;
+        if (ligne.UniteId is null && !string.IsNullOrWhiteSpace(ligne.QuantiteTexte))
+        {
+            ligne.UniteId = uniteReferenceId ?? _unites.FirstOrDefault(u => u.Code == uniteReference)?.Id;
+        }
+
+        AnnulerChangement();
+    }
+
+    private void RetirerLigne(int position)
+    {
+        if (_lignes[position] == _ligneEnChangement)
+        {
+            AnnulerChangement();
+        }
+
+        _lignes.RemoveAt(position);
     }
 
     private static void Deplacer<T>(List<T> liste, int position, int decalage)
@@ -494,7 +707,11 @@ else
 
             // Une quantité illisible est déjà signalée : on n'ajoute pas « unité sans quantité » pour la même ligne.
             var uniteId = quantiteLue ? ligne.UniteId : null;
-            lignes.Add(new LigneIngredient(ligne.IngredientId, quantite, uniteId, ligne.Precision, ligne.EstOptionnel, ligne.NomIngredient));
+
+            // Une ligne importée pas encore confirmée n'a pas d'ingrédient : la validation la signale avec son texte.
+            lignes.Add(ligne.Statut is null
+                ? new LigneIngredient(ligne.IngredientId, quantite, uniteId, ligne.Precision, ligne.EstOptionnel, ligne.NomIngredient)
+                : new LigneIngredient(0, quantite, uniteId, ligne.Precision, ligne.EstOptionnel, ligne.TexteLu ?? ligne.NomIngredient));
         }
 
         var recette = new FicheRecette(
@@ -582,9 +799,20 @@ else
     {
         public Guid Cle { get; } = Guid.NewGuid();
 
-        public int IngredientId { get; init; }
+        public int IngredientId { get; set; }
 
-        public string NomIngredient { get; init; } = string.Empty;
+        public string NomIngredient { get; set; } = string.Empty;
+
+        /// <summary>Import : la ligne telle qu'elle a été lue ; <c>null</c> pour une ligne saisie ou déjà enregistrée.</summary>
+        public string? TexteLu { get; init; }
+
+        /// <summary>Import : le nom lu (« oignons »), proposé pour créer l'ingrédient.</summary>
+        public string NomLu { get; init; } = string.Empty;
+
+        /// <summary>Import : ce qu'il reste à faire pour la ligne ; <c>null</c> une fois l'ingrédient confirmé.</summary>
+        public StatutRapprochement? Statut { get; set; }
+
+        public IReadOnlyList<SuggestionIngredient> Suggestions { get; init; } = [];
 
         public string QuantiteTexte { get; set; } = string.Empty;
 
@@ -603,6 +831,26 @@ else
             Precision = ligne.Precision,
             EstOptionnel = ligne.EstOptionnel,
         };
+
+        /// <summary>Une ligne importée : un nom identique est accepté d'office, le reste attend une confirmation.</summary>
+        public static ModeleLigne DepuisImport(IngredientImporte importe, IReadOnlyList<Unite> unites)
+        {
+            var (lue, rapprochement) = importe;
+            var propose = rapprochement.Propose;
+            return new ModeleLigne
+            {
+                IngredientId = propose?.IngredientId ?? 0,
+                NomIngredient = propose?.Nom ?? lue.Nom,
+                QuantiteTexte = AnalyseQuantite.Ecrire(lue.Quantite),
+                UniteId = unites.FirstOrDefault(u => u.Code == lue.CodeUnite)?.Id,
+                Precision = lue.Precision,
+                EstOptionnel = lue.EstOptionnel,
+                TexteLu = lue.Texte,
+                NomLu = lue.Nom,
+                Statut = rapprochement.Statut == StatutRapprochement.Exact ? null : rapprochement.Statut,
+                Suggestions = rapprochement.Suggestions,
+            };
+        }
     }
 
     private sealed class ModeleEtape

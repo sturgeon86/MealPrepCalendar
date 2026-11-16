@@ -107,6 +107,16 @@ public sealed class ValidationRecetteTests
     }
 
     [Fact]
+    public void LigneImporteeNonRapprochee_BloqueAvecSonTexte()
+    {
+        var importee = new LigneIngredient(0, 2m, 1, null, false, "2 oignons");
+
+        var erreurs = ValidationRecette.Valider(Recette(ingredients: [SelAuGout, importee]));
+
+        Assert.Equal(["Choisissez l'ingrédient de la ligne 2 (« 2 oignons ») ou créez-le."], erreurs);
+    }
+
+    [Fact]
     public void TextesTropLongs_SontRefuses()
     {
         var erreurs = ValidationRecette.Valider(Recette(

@@ -74,6 +74,19 @@ public sealed class DepotRecettesTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task RecetteImporteeDUnTexte_GardeSaSource()
+    {
+        var id = await _depot.AjouterAsync(Crepes() with { Source = SourceRecette.Texte }, _idMarie);
+
+        Assert.Equal(SourceRecette.Texte, (await _depot.TrouverAsync(id))?.Source);
+
+        // Une modification ne change pas la source.
+        var relue = (await _depot.TrouverAsync(id))!;
+        await _depot.ModifierAsync(relue with { Nom = "Crêpes fines" });
+        Assert.Equal(SourceRecette.Texte, (await _depot.TrouverAsync(id))?.Source);
+    }
+
+    [Fact]
     public async Task Modifier_RemplaceToutEtRespecteLeNouvelOrdre()
     {
         var id = await _depot.AjouterAsync(Crepes(), _idMarie);

@@ -6,6 +6,9 @@ public enum SourceRecette
     Manuelle,
     Web,
     Ocr,
+
+    /// <summary>Importée d'un texte collé (story 8.3).</summary>
+    Texte,
 }
 
 /// <summary>Un ingrédient d'une recette, avec sa quantité.</summary>
