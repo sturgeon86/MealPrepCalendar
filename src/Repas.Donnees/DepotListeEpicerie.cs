@@ -283,6 +283,74 @@ public sealed class DepotListeEpicerie : DepotBase
             annulation) > 0;
     }
 
+    /// <summary>
+    /// Termine la liste active, dans une transaction, et reporte les articles non achetés choisis sur une nouvelle
+    /// liste active (pas encore générée). Les copies portent la mention « reporté » et pointent vers l'article d'origine ;
+    /// un article coché entre-temps n'est pas reporté (<see cref="Terminaison.ArticlesAReporter"/>).
+    /// </summary>
+    /// <param name="listeId">La liste que l'utilisateur a sous les yeux : si une autre liste est devenue active, rien ne change.</param>
+    /// <param name="aReporter">Les articles à reporter ; vide pour terminer sans report.</param>
+    /// <param name="utilisateurId">Celui qui termine, auteur de la prochaine liste s'il y en a une.</param>
+    public Task<ResultatTerminaison> TerminerAsync(
+        int listeId, IEnumerable<int> aReporter, int utilisateurId, SessionSql? session = null, CancellationToken annulation = default)
+    {
+        ArgumentNullException.ThrowIfNull(aReporter);
+        var choisis = aReporter.ToList();
+
+        const string sqlTerminer = """
+            UPDATE dbo.ListeEpicerie
+            SET Statut = 'Terminee', CleActive = Id, DateTerminaison = SYSUTCDATETIME()
+            WHERE Id = @listeId AND Statut = 'Active';
+            """;
+        const string sqlCreerListe = "INSERT INTO dbo.ListeEpicerie (Nom, CreePar) OUTPUT INSERTED.Id VALUES (@nom, @creePar);";
+        const string sqlReporter = """
+            INSERT INTO dbo.ListeEpicerieArticle (ListeId, IngredientId, QuantiteTotale, UniteId, EstManuel, EstReporte, ReporteDeArticleId)
+            VALUES (@listeId, @ingredientId, @quantite, @uniteId, @estManuel, 1, @origine);
+            """;
+
+        return DansTransactionAsync(
+            session,
+            async s =>
+            {
+                var active = await VerrouillerActiveAsync(s, annulation);
+                if (active?.Id != listeId)
+                {
+                    return new ResultatTerminaison(StatutTerminaison.ListeNonActive, listeId, null, 0);
+                }
+
+                var articles = (await TrouverActiveAsync(s, annulation))!.Articles;
+                var reports = Terminaison.ArticlesAReporter(articles, choisis);
+
+                // D'abord terminer : la contrainte d'une seule liste active permet ensuite d'en créer une nouvelle.
+                await s.ExecuterAsync(sqlTerminer, p => p.Ajouter("@listeId", SqlDbType.Int, listeId), annulation);
+                if (reports.Count == 0)
+                {
+                    return new ResultatTerminaison(StatutTerminaison.Terminee, listeId, null, 0);
+                }
+
+                var nouvelleId = await s.ScalaireAsync<int>(
+                    sqlCreerListe,
+                    p => p.Ajouter("@nom", SqlDbType.NVarChar, 100, NomProchaineListe).Ajouter("@creePar", SqlDbType.Int, utilisateurId),
+                    annulation);
+                foreach (var article in reports)
+                {
+                    await s.ExecuterAsync(
+                        sqlReporter,
+                        p => p
+                            .Ajouter("@listeId", SqlDbType.Int, nouvelleId)
+                            .Ajouter("@ingredientId", SqlDbType.Int, article.IngredientId)
+                            .AjouterDecimal("@quantite", 18, EchelleQuantite, article.Quantite)
+                            .Ajouter("@uniteId", SqlDbType.Int, article.Quantite is null ? null : article.UniteId)
+                            .Ajouter("@estManuel", SqlDbType.Bit, article.EstManuel)
+                            .Ajouter("@origine", SqlDbType.Int, article.Id),
+                        annulation);
+                }
+
+                return new ResultatTerminaison(StatutTerminaison.Terminee, listeId, nouvelleId, reports.Count);
+            },
+            annulation);
+    }
+
     /// <summary>Nom d'une liste créée avant d'être générée (pour un ajout manuel ou des articles reportés).</summary>
     public const string NomProchaineListe = "Prochaine liste d'épicerie";
 

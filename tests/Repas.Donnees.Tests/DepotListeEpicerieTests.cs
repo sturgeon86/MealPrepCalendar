@@ -548,6 +548,123 @@ public sealed class DepotListeEpicerieTests : IAsyncLifetime
         Assert.False(await _depot.CocherAsync(ajout.ArticleId, coche: true, _idMarie));
     }
 
+    // --- Terminer la liste (story 6.3)
+
+    /// <summary>Liste générée avec lait et farine (des repas), plus du papier de toilette (manuel) ; le lait est coché.</summary>
+    private async Task<(int ListeId, int Lait, int Farine, int Papier)> ListeEnCoursAsync()
+    {
+        var crepes = await RecetteAsync("Crêpes", 4, Ligne(_lait, 500m, "ml"), Ligne(_farine, 200m, "g"));
+        await PlanifierAsync(Dimanche, Plage.Diner, crepes, 4);
+        var generation = await _depot.GenererAsync(Dimanche, Samedi, _idMarie);
+        var papier = await _depot.AjouterManuelAsync(new AjoutManuel(await IngredientAsync("Papier de toilette"), 2m, Unite("unité")), _idMarie);
+        var lait = await ArticleAsync(_lait);
+        await _depot.CocherAsync(lait.Id, coche: true, _idMarie);
+        return (generation.ListeId!.Value, lait.Id, (await ArticleAsync(_farine)).Id, papier.ArticleId);
+    }
+
+    [Fact]
+    public async Task Terminer_ReporteLesArticlesChoisisSurUneNouvelleListe()
+    {
+        var (listeId, _, farine, papier) = await ListeEnCoursAsync();
+
+        var resultat = await _depot.TerminerAsync(listeId, [farine, papier], _idMarie);
+
+        Assert.Equal(StatutTerminaison.Terminee, resultat.Statut);
+        Assert.Equal(2, resultat.NbReportes);
+        var (nouvelle, articles) = await ActiveAsync();
+        Assert.Equal((resultat.NouvelleListeId, DepotListeEpicerie.NomProchaineListe, false), (nouvelle.Id, nouvelle.Nom, nouvelle.EstGeneree));
+        Assert.NotEqual(listeId, nouvelle.Id);
+
+        // Les copies gardent la quantité et l'unité, portent « reporté » et ne sont pas cochées ; le papier reste manuel.
+        Assert.Equal(
+            [(_farine, 200m, "g", false), (await IngredientAsync("Papier de toilette"), 2m, "unité", true)],
+            articles.OrderBy(a => a.IngredientId == _farine ? 0 : 1).Select(a => (a.IngredientId, a.Quantite!.Value, a.CodeUnite!, a.EstManuel)));
+        Assert.All(articles, a => Assert.True(a.EstReporte && !a.EstCoche && a.PeutEtreRetire));
+        Assert.Equal(2, await _baseDeTest.ScalaireAsync<int>(
+            $"SELECT COUNT(*) FROM dbo.ListeEpicerieArticle WHERE ListeId = {nouvelle.Id} AND ReporteDeArticleId IN ({farine}, {papier});"));
+    }
+
+    [Fact]
+    public async Task Terminer_LaListeTermineeGardeSesArticles()
+    {
+        var (listeId, lait, farine, _) = await ListeEnCoursAsync();
+
+        await _depot.TerminerAsync(listeId, [farine], _idMarie);
+
+        Assert.Equal(1, await _baseDeTest.ScalaireAsync<int>(
+            $"SELECT COUNT(*) FROM dbo.ListeEpicerie WHERE Id = {listeId} AND Statut = 'Terminee' AND CleActive = Id AND DateTerminaison IS NOT NULL;"));
+        Assert.Equal(3, await _baseDeTest.ScalaireAsync<int>($"SELECT COUNT(*) FROM dbo.ListeEpicerieArticle WHERE ListeId = {listeId};"));
+        Assert.Equal(1, await _baseDeTest.ScalaireAsync<int>($"SELECT COUNT(*) FROM dbo.ListeEpicerieArticle WHERE Id = {lait} AND EstCoche = 1;"));
+    }
+
+    [Fact]
+    public async Task Terminer_SansReport_NeCreePasDeNouvelleListe()
+    {
+        var (listeId, _, _, _) = await ListeEnCoursAsync();
+
+        var resultat = await _depot.TerminerAsync(listeId, [], _idMarie);
+
+        Assert.Equal(new ResultatTerminaison(StatutTerminaison.Terminee, listeId, null, 0), resultat);
+        Assert.Null(await _depot.TrouverActiveAsync());
+    }
+
+    [Fact]
+    public async Task Terminer_UnArticleCocheNEstPasReporte()
+    {
+        var (listeId, lait, farine, _) = await ListeEnCoursAsync();
+
+        var resultat = await _depot.TerminerAsync(listeId, [lait, farine], _idMarie);
+
+        Assert.Equal(1, resultat.NbReportes);
+        Assert.Equal([_farine], (await ActiveAsync()).Articles.Select(a => a.IngredientId));
+    }
+
+    [Fact]
+    public async Task LesArticlesReportes_RestentALaGenerationEtALaRegeneration()
+    {
+        var (listeId, _, farine, _) = await ListeEnCoursAsync();
+        await _depot.TerminerAsync(listeId, [farine], _idMarie);
+        var crepes = await RecetteAsync("Gaufres", 4, Ligne(_farine, 300m, "g"));
+        await PlanifierAsync(Samedi.AddDays(1), Plage.Diner, crepes, 4);
+
+        // La prochaine liste est générée pour la semaine suivante, puis regénérée.
+        Assert.Equal(StatutGeneration.Generee, (await _depot.GenererAsync(Samedi.AddDays(1), Samedi.AddDays(7), _idMarie)).Statut);
+        var regeneration = await _depot.RegenererAsync(Samedi.AddDays(1), Samedi.AddDays(7));
+
+        Assert.Equal(1, regeneration.NbConserves);
+        var farines = (await ActiveAsync()).Articles.Where(a => a.IngredientId == _farine).OrderBy(a => a.EstReporte).ToList();
+        Assert.Equal([(300m, false), (200m, true)], farines.Select(a => (a.Quantite!.Value, a.EstReporte)));
+    }
+
+    [Fact]
+    public async Task Terminer_UneListeQuiNEstPlusActive_NeFaitRien()
+    {
+        var (listeId, _, farine, _) = await ListeEnCoursAsync();
+        await _depot.TerminerAsync(listeId, [farine], _idMarie);
+        var nouvelle = (await ActiveAsync()).Liste.Id;
+
+        // Un deuxième appareil termine la même liste, déjà terminée.
+        var resultat = await _depot.TerminerAsync(listeId, [farine], _idMarie);
+
+        Assert.Equal(StatutTerminaison.ListeNonActive, resultat.Statut);
+        Assert.Equal(nouvelle, (await ActiveAsync()).Liste.Id);
+        Assert.Single((await ActiveAsync()).Articles);
+    }
+
+    [Fact]
+    public async Task UnArticleReporte_PeutEtreReporteDeNouveau()
+    {
+        var (listeId, _, farine, _) = await ListeEnCoursAsync();
+        var premiere = await _depot.TerminerAsync(listeId, [farine], _idMarie);
+        var reporte = Assert.Single((await ActiveAsync()).Articles);
+
+        var seconde = await _depot.TerminerAsync(premiere.NouvelleListeId!.Value, [reporte.Id], _idMarie);
+
+        Assert.Equal(1, seconde.NbReportes);
+        Assert.Equal(1, await _baseDeTest.ScalaireAsync<int>(
+            $"SELECT COUNT(*) FROM dbo.ListeEpicerieArticle WHERE ListeId = {seconde.NouvelleListeId} AND ReporteDeArticleId = {reporte.Id};"));
+    }
+
     [Fact]
     public async Task TrouverActive_SansListe_RetourneNull()
     {

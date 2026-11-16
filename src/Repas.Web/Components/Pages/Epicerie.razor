@@ -202,6 +202,49 @@ else
     </section>
 }
 
+@if (_liste is { Articles.Count: > 0 } aTerminer)
+{
+    var nonAchetes = Terminaison.NonAchetes(aTerminer.Articles);
+    var nbAReporter = nonAchetes.Count(a => !_nonReportes.Contains(a.Id));
+    @* Après l'épicerie : la liste se termine, et ce qui n'a pas été acheté peut passer à la suivante. *@
+    <details id="terminer" class="carte-formulaire carte-large terminaison" open="@TerminerOuvert">
+        <summary>Terminer la liste</summary>
+        @if (nonAchetes.Count == 0)
+        {
+            <p class="aide">Tous les articles sont cochés. La liste terminée est gardée ; la prochaine commencera vide.</p>
+            <button type="button" class="bouton-principal bouton-compact" disabled="@_enCours" @onclick="TerminerAsync">Terminer la liste</button>
+        }
+        else
+        {
+            <p class="aide">
+                @nonAchetes.Count article@(nonAchetes.Count > 1 ? "s n'ont" : " n'a") pas été acheté@(nonAchetes.Count > 1 ? "s" : "").
+                Gardez cochés ceux à reporter sur la prochaine liste : ils y seront marqués « Reporté » et resteront à la regénération.
+            </p>
+            <div class="actions-page choix-reports">
+                <button type="button" class="bouton-lien-texte" @onclick="() => _nonReportes.Clear()">Tout reporter</button>
+                <button type="button" class="bouton-lien-texte" @onclick="() => _nonReportes.UnionWith(nonAchetes.Select(a => a.Id))">Ne rien reporter</button>
+            </div>
+            <ul class="liste-reports">
+                @foreach (var article in nonAchetes)
+                {
+                    <li @key="article.Id">
+                        <label class="champ-case">
+                            <input type="checkbox" checked="@(!_nonReportes.Contains(article.Id))" @onchange="() => BasculerReport(article.Id)" />
+                            <span>
+                                @article.NomIngredient
+                                <span class="details-ligne">@AffichageListe.Quantite(article, _unitesParId)</span>
+                            </span>
+                        </label>
+                    </li>
+                }
+            </ul>
+            <button type="button" class="bouton-principal bouton-compact" disabled="@_enCours" @onclick="TerminerAsync">
+                @(nbAReporter == 0 ? "Terminer sans rien reporter" : $"Terminer et reporter {nbAReporter} article{(nbAReporter > 1 ? "s" : "")}")
+            </button>
+        }
+    </details>
+}
+
 @code {
     private bool _charge;
     private ListeAvecArticles? _liste;
@@ -229,6 +272,15 @@ else
     // Temps réel : cet écran annonce ses changements et reçoit ceux des autres.
     private readonly Guid _ecran = Guid.NewGuid();
     private IDisposable? _abonnement;
+
+    // Terminer : par défaut, tous les articles non achetés sont reportés ; on retient ceux qu'on a décochés.
+    private readonly HashSet<int> _nonReportes = [];
+
+    /// <summary>Ouvre le bloc « Terminer la liste » à l'arrivée, depuis le mode magasin : <c>?terminer=1</c>.</summary>
+    [SupplyParameterFromQuery(Name = "terminer")]
+    public string? Terminer { get; set; }
+
+    private bool TerminerOuvert => Terminer is not null;
 
     [CascadingParameter]
     private Task<AuthenticationState> EtatAuthentification { get; set; } = default!;
@@ -382,6 +434,52 @@ else
             });
 
     public void Dispose() => _abonnement?.Dispose();
+
+    private void BasculerReport(int articleId)
+    {
+        if (!_nonReportes.Remove(articleId))
+        {
+            _nonReportes.Add(articleId);
+        }
+    }
+
+    private async Task TerminerAsync()
+    {
+        if (_liste is not { } liste)
+        {
+            return;
+        }
+
+        _message = null;
+        _enCours = true;
+        try
+        {
+            var aReporter = Terminaison.NonAchetes(liste.Articles).Select(a => a.Id).Where(id => !_nonReportes.Contains(id)).ToList();
+            var utilisateur = (await EtatAuthentification).User.ObtenirIdUtilisateur()
+                ?? throw new InvalidOperationException("Aucun utilisateur connecté.");
+            var resultat = await DepotListe.TerminerAsync(liste.Liste.Id, aReporter, utilisateur);
+
+            if (resultat.Statut == StatutTerminaison.ListeNonActive)
+            {
+                Afficher("Cette liste avait déjà été terminée, peut-être depuis un autre appareil. Voici la liste active.", erreur: true);
+            }
+            else
+            {
+                Afficher(
+                    resultat.NbReportes == 0
+                        ? "Liste terminée. La prochaine commencera vide."
+                        : $"Liste terminée. {resultat.NbReportes} article{(resultat.NbReportes > 1 ? "s ont été reportés" : " a été reporté")} sur la prochaine liste.",
+                    erreur: false);
+            }
+
+            _nonReportes.Clear();
+            await ChargerEtAnnoncerAsync();
+        }
+        finally
+        {
+            _enCours = false;
+        }
+    }
 
     /// <summary>Raccourcis de semaine et dates, communs à la génération et à la regénération.</summary>
     private RenderFragment ChoixPeriode => __builder =>

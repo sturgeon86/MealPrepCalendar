@@ -44,7 +44,10 @@ else
 {
     @if (_articles.All(a => a.EstCoche))
     {
-        <p class="message-succes" role="status">Tout est dans le panier ! Bon retour à la maison.</p>
+        <div class="message-succes fin-courses" role="status">
+            <p>Tout est dans le panier ! Bon retour à la maison.</p>
+            <a class="bouton-principal bouton-compact" href="epicerie?terminer=1#terminer">Terminer la liste</a>
+        </div>
     }
 
     @foreach (var groupe in AffichageListe.GrouperParCategorie(_articles))
@@ -91,6 +94,14 @@ else
                 </ul>
             }
         </section>
+    }
+
+    @if (!_articles.All(a => a.EstCoche))
+    {
+        @* À la caisse, même s'il manque des articles : on termine et on reporte le reste. *@
+        <p class="lien-fin-courses">
+            <a href="epicerie?terminer=1#terminer">Terminer la liste et reporter ce qui manque…</a>
+        </p>
     }
 }
 
