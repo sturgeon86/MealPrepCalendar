@@ -50,14 +50,16 @@ Variables d'environnement du conteneur :
 | `TZ` | non | Fuseau horaire, ex. `America/Toronto` |
 | `Auth__AllowInsecureHttp` | non (`false`) | `true` permet les cookies en HTTP simple. Essais locaux seulement |
 | `DataProtection__KeysPath` | non (`/data/keys`, fixé dans l'image) | Dossier des clés qui chiffrent le cookie de connexion |
-| `Photos__Chemin` | non (`/data/photos`, fixé dans l'image) | Dossier des photos de recettes (à venir) |
+| `Photos__Chemin` | non (`/data/photos`, fixé dans l'image) | Dossier des photos de recettes. Sans valeur (`dotnet run`) : `src/Repas.Web/App_Data/photos`, ignoré par git |
 
 ### Volumes
 
 - `/data/keys` : clés de protection des données ASP.NET Core. À conserver, sinon chaque
   redémarrage du conteneur déconnecte tout le monde. Elles sont stockées sans chiffrement
   (l'app l'indique dans son journal) : garder ce dossier privé.
-- `/data/photos` : photos des recettes.
+- `/data/photos` : photos des recettes, déjà réduites par le navigateur (1600 px au plus, JPEG,
+  quelques centaines de Ko). La base ne garde que le nom du fichier : sauvegarder ce dossier
+  avec la base.
 
 Le conteneur roule sous l'utilisateur `app` (UID 1654) : un dossier monté de l'hôte doit
 lui appartenir.

@@ -634,3 +634,49 @@ a.bouton-secondaire {
     max-width: 44rem;
     margin-bottom: 2rem;
 }
+
+/* --- Photo de recette --- */
+.photo-recette {
+    display: block;
+    width: 100%;
+    max-height: 24rem;
+    margin-bottom: 1rem;
+    border-radius: 0.375rem;
+    object-fit: cover;
+    background: #e4e7eb;
+}
+
+.actions-photo {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.actions-photo label.bouton-secondaire {
+    display: inline-block;
+}
+
+.actions-photo label.desactive {
+    opacity: 0.6;
+    cursor: default;
+}
+
+/* Le champ de fichier est caché : son focus clavier s'affiche sur l'étiquette qui le suit. */
+.actions-photo input[type=file]:focus-visible + label {
+    outline: 2px solid #1f6f4a;
+    outline-offset: 2px;
+}
+
+.liste-cartes li.ligne-recette {
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+}
+
+.vignette-recette {
+    flex: none;
+    width: 4rem;
+    height: 4rem;
+    border-radius: 0.375rem;
+    object-fit: cover;
+    background: #e4e7eb;
+}

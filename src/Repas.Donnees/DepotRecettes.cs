@@ -20,14 +20,16 @@ public sealed class DepotRecettes : DepotBase
                         ELSE ISNULL(r.TempsPreparationMin, 0) + ISNULL(r.TempsCuissonMin, 0) END,
                    ISNULL((SELECT STRING_AGG(e.Nom, N', ') WITHIN GROUP (ORDER BY e.Nom)
                            FROM dbo.RecetteEtiquette re JOIN dbo.Etiquette e ON e.Id = re.EtiquetteId
-                           WHERE re.RecetteId = r.Id), N'')
+                           WHERE re.RecetteId = r.Id), N''),
+                   r.PhotoChemin
             FROM dbo.Recette r
             ORDER BY r.Nom, r.Id;
             """;
         return ListerAsync(
             session,
             sql,
-            l => new ResumeRecette(l.GetInt32(0), l.GetString(1), l.GetInt32(2), l.IsDBNull(3) ? null : l.GetInt32(3), l.GetString(4)),
+            l => new ResumeRecette(l.GetInt32(0), l.GetString(1), l.GetInt32(2), l.IsDBNull(3) ? null : l.GetInt32(3), l.GetString(4),
+                l.IsDBNull(5) ? null : l.GetString(5)),
             annulation: annulation);
     }
 
@@ -41,7 +43,7 @@ public sealed class DepotRecettes : DepotBase
     public Task<FicheRecette?> TrouverAsync(int id, SessionSql? session = null, CancellationToken annulation = default)
     {
         const string sqlRecette = """
-            SELECT Id, Nom, Portions, TempsPreparationMin, TempsCuissonMin, Notes, Source
+            SELECT Id, Nom, Portions, TempsPreparationMin, TempsCuissonMin, Notes, Source, PhotoChemin
             FROM dbo.Recette WHERE Id = @id;
             """;
         const string sqlIngredients = """
@@ -74,7 +76,8 @@ public sealed class DepotRecettes : DepotBase
                         Source: Enum.Parse<SourceRecette>(l.GetString(6)),
                         Ingredients: [],
                         Etapes: [],
-                        Etiquettes: []),
+                        Etiquettes: [],
+                        PhotoChemin: l.IsDBNull(7) ? null : l.GetString(7)),
                     Id,
                     annulation);
                 if (recette is null)
@@ -108,9 +111,9 @@ public sealed class DepotRecettes : DepotBase
         FicheRecette recette, int creeParId, SessionSql? session = null, CancellationToken annulation = default)
     {
         const string sql = """
-            INSERT INTO dbo.Recette (Nom, Portions, TempsPreparationMin, TempsCuissonMin, Notes, Source, CreePar)
+            INSERT INTO dbo.Recette (Nom, Portions, TempsPreparationMin, TempsCuissonMin, Notes, Source, PhotoChemin, CreePar)
             OUTPUT INSERTED.Id
-            VALUES (@nom, @portions, @tempsPreparation, @tempsCuisson, @notes, @source, @creePar);
+            VALUES (@nom, @portions, @tempsPreparation, @tempsCuisson, @notes, @source, @photo, @creePar);
             """;
 
         return DansTransactionAsync(
@@ -125,14 +128,19 @@ public sealed class DepotRecettes : DepotBase
             annulation);
     }
 
-    /// <summary>Remplace la recette, ses ingrédients, ses étapes et ses étiquettes, dans une transaction.</summary>
-    /// <returns><c>false</c> si la recette n'existe pas.</returns>
-    public Task<bool> ModifierAsync(FicheRecette recette, SessionSql? session = null, CancellationToken annulation = default)
+    /// <summary>Remplace la recette, sa photo, ses ingrédients, ses étapes et ses étiquettes, dans une transaction.</summary>
+    /// <returns>
+    /// La photo enregistrée juste avant, lue par la même instruction que la modification (donc exacte même si
+    /// quelqu'un d'autre l'a changée entre-temps), ou <c>null</c> si la recette n'existe pas.
+    /// </returns>
+    public Task<ModificationRecette?> ModifierAsync(
+        FicheRecette recette, SessionSql? session = null, CancellationToken annulation = default)
     {
         const string sql = """
             UPDATE dbo.Recette
             SET Nom = @nom, Portions = @portions, TempsPreparationMin = @tempsPreparation, TempsCuissonMin = @tempsCuisson,
-                Notes = @notes, Source = @source, DateModification = SYSUTCDATETIME()
+                Notes = @notes, Source = @source, PhotoChemin = @photo, DateModification = SYSUTCDATETIME()
+            OUTPUT DELETED.PhotoChemin
             WHERE Id = @id;
             """;
         const string sqlVider = """
@@ -145,16 +153,19 @@ public sealed class DepotRecettes : DepotBase
             session,
             async s =>
             {
-                var lignes = await s.ExecuterAsync(
-                    sql, p => AjouterColonnes(p, recette).Ajouter("@id", SqlDbType.Int, recette.Id), annulation);
-                if (lignes == 0)
+                var anciennes = await s.ListerAsync(
+                    sql,
+                    l => l.IsDBNull(0) ? null : l.GetString(0),
+                    p => AjouterColonnes(p, recette).Ajouter("@id", SqlDbType.Int, recette.Id),
+                    annulation);
+                if (anciennes.Count == 0)
                 {
-                    return false;
+                    return null;
                 }
 
                 await s.ExecuterAsync(sqlVider, p => p.Ajouter("@id", SqlDbType.Int, recette.Id), annulation);
                 await EcrireContenuAsync(s, recette.Id, recette, annulation);
-                return true;
+                return new ModificationRecette(anciennes[0]);
             },
             annulation);
     }
@@ -235,5 +246,6 @@ public sealed class DepotRecettes : DepotBase
         .Ajouter("@tempsPreparation", SqlDbType.Int, recette.TempsPreparationMin)
         .Ajouter("@tempsCuisson", SqlDbType.Int, recette.TempsCuissonMin)
         .Ajouter("@notes", SqlDbType.NVarChar, -1, string.IsNullOrWhiteSpace(recette.Notes) ? null : recette.Notes.Trim())
-        .Ajouter("@source", SqlDbType.VarChar, 10, recette.Source.ToString());
+        .Ajouter("@source", SqlDbType.VarChar, 10, recette.Source.ToString())
+        .Ajouter("@photo", SqlDbType.NVarChar, 260, recette.PhotoChemin);
 }

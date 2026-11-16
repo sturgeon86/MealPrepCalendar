@@ -4,9 +4,12 @@
 @using Repas.Domaine.Recettes
 @using Repas.Domaine.Referentiel
 @using Repas.Donnees
+@using Repas.Donnees.Photos
 @using Repas.Web.Authentification
 @using Repas.Web.Components.Recettes
 @inject DepotRecettes DepotRecettes
+@inject StockagePhotos StockagePhotos
+@inject ILogger<FicheRecettePage> Journal
 @inject DepotCategories DepotCategories
 @inject DepotUnites DepotUnites
 @inject NavigationManager Navigation
@@ -60,6 +63,41 @@ else
                 <input id="cuisson" type="number" min="0" @bind="_tempsCuisson" />
             </div>
         </div>
+    </section>
+
+    <section class="carte-formulaire carte-large">
+        <h2>Photo</h2>
+        @if (SourcePhotoAffichee is { } source)
+        {
+            <img class="photo-recette" src="@source" alt="Photo de la recette" />
+        }
+        else
+        {
+            <p class="aide">Aucune photo. Sur un cellulaire, on peut aussi prendre la photo directement.</p>
+        }
+
+        @if (_erreurPhoto is not null)
+        {
+            <p class="message-erreur" role="alert">@_erreurPhoto</p>
+        }
+
+        <div class="actions-photo">
+            @* Le champ de fichier est caché derrière une étiquette en forme de bouton ; @key le recrée après chaque choix
+               pour qu'on puisse choisir de nouveau le même fichier. *@
+            <InputFile @key="_cleChoixPhoto" id="photo" class="visuellement-cache" accept="image/*" OnChange="ChoisirPhotoAsync"
+                       disabled="@_traitementPhoto" />
+            <label for="photo" class="bouton-secondaire @(_traitementPhoto ? "desactive" : null)">
+                @(_traitementPhoto ? "Préparation de la photo…" : SourcePhotoAffichee is null ? "Choisir une photo" : "Changer la photo")
+            </label>
+            @if (SourcePhotoAffichee is not null)
+            {
+                <button type="button" class="bouton-secondaire" disabled="@_traitementPhoto" @onclick="RetirerPhoto">Retirer la photo</button>
+            }
+        </div>
+        @if (_nouvellePhoto is not null || (_photoRetiree && _photoChemin is not null))
+        {
+            <p class="aide">Le changement de photo sera conservé à l'enregistrement de la recette.</p>
+        }
     </section>
 
     <section class="carte-formulaire carte-large">
@@ -220,6 +258,21 @@ else
     private string _nouvelleEtiquette = string.Empty;
     private string? _nomACreer;
 
+    // Photo : celle enregistrée, et le changement en attente (nouvelle photo ou retrait) jusqu'à l'enregistrement.
+    private string? _photoChemin;
+    private byte[]? _nouvellePhoto;
+    private string? _apercuNouvellePhoto;
+    private bool _photoRetiree;
+    private bool _traitementPhoto;
+    private string? _erreurPhoto;
+    private Guid _cleChoixPhoto = Guid.NewGuid();
+
+    /// <summary>Largeur de l'aperçu d'une photo pas encore enregistrée (plus léger à envoyer au navigateur).</summary>
+    private const int LargeurApercu = 800;
+
+    /// <summary>Filet de sécurité : au-delà, le navigateur n'arrivera pas à préparer la photo.</summary>
+    private static readonly TimeSpan DelaiPreparation = TimeSpan.FromSeconds(30);
+
     [Parameter]
     public int? Id { get; set; }
 
@@ -227,6 +280,12 @@ else
     private Task<AuthenticationState> EtatAuthentification { get; set; } = default!;
 
     private bool EstNouvelle => Id is null;
+
+    private string? SourcePhotoAffichee =>
+        _apercuNouvellePhoto ?? (_photoRetiree || _photoChemin is null ? null : $"photos/{_photoChemin}");
+
+    /// <summary>La photo qui sera enregistrée avec la recette, si aucune nouvelle photo n'est choisie.</summary>
+    private string? PhotoConservee => _photoRetiree ? null : _photoChemin;
 
     protected override async Task OnInitializedAsync()
     {
@@ -241,6 +300,11 @@ else
         _introuvable = false;
         _erreurs = [];
         _nomACreer = null;
+        _photoChemin = null;
+        _nouvellePhoto = null;
+        _apercuNouvellePhoto = null;
+        _photoRetiree = false;
+        _erreurPhoto = null;
 
         if (EstNouvelle)
         {
@@ -273,6 +337,7 @@ else
         _lignes = recette.Ingredients.Select(ModeleLigne.Depuis).ToList();
         _etapes = recette.Etapes.Select(t => new ModeleEtape { Texte = t }).ToList();
         _etiquettes = recette.Etiquettes.ToList();
+        _photoChemin = recette.PhotoChemin;
         _charge = true;
     }
 
@@ -333,6 +398,81 @@ else
         _nouvelleEtiquette = string.Empty;
     }
 
+    private async Task ChoisirPhotoAsync(InputFileChangeEventArgs e)
+    {
+        _erreurPhoto = null;
+        _traitementPhoto = true;
+        try
+        {
+            // Le navigateur ne signale pas une image illisible : il attendrait indéfiniment. On vérifie donc d'abord
+            // les premiers octets du fichier d'origine.
+            if (PhotoRecette.DetecterFormat(await LireDebutAsync(e.File)) is null)
+            {
+                throw new PhotoInvalideException("Ce fichier n'est pas une image reconnue (JPEG, PNG ou WebP).");
+            }
+
+            // Le navigateur réduit la photo et la convertit en JPEG avant l'envoi : une photo de cellulaire
+            // de plusieurs Mo devient quelques centaines de Ko, sans bibliothèque d'images côté serveur.
+            var reduite = await e.File
+                .RequestImageFileAsync("image/jpeg", PhotoRecette.DimensionMax, PhotoRecette.DimensionMax)
+                .AsTask()
+                .WaitAsync(DelaiPreparation);
+            var contenu = await LireAsync(reduite);
+            PhotoRecette.Verifier(contenu);
+
+            var apercu = await e.File.RequestImageFileAsync("image/jpeg", LargeurApercu, LargeurApercu).AsTask().WaitAsync(DelaiPreparation);
+            _apercuNouvellePhoto = $"data:image/jpeg;base64,{Convert.ToBase64String(await LireAsync(apercu))}";
+            _nouvellePhoto = contenu;
+            _photoRetiree = false;
+        }
+        catch (PhotoInvalideException ex)
+        {
+            _erreurPhoto = ex.Message;
+        }
+        catch (IOException)
+        {
+            _erreurPhoto = $"La photo dépasse {PhotoRecette.TailleMaxOctets / (1024 * 1024)} Mo, même réduite.";
+        }
+        catch (Exception ex) when (ex is JSException or TimeoutException)
+        {
+            // Le navigateur n'a pas pu ouvrir le fichier comme une image (fichier abîmé, format non pris en charge).
+            _erreurPhoto = "Ce fichier n'a pas pu être lu comme une image. Choisissez une photo JPEG, PNG ou WebP.";
+        }
+        finally
+        {
+            _traitementPhoto = false;
+            _cleChoixPhoto = Guid.NewGuid();
+        }
+    }
+
+    /// <summary>Les premiers octets du fichier, assez pour reconnaître son format, sans transférer le reste.</summary>
+    private static async Task<byte[]> LireDebutAsync(IBrowserFile fichier)
+    {
+        var debut = new byte[16];
+        await using var flux = fichier.OpenReadStream(maxAllowedSize: Math.Max(fichier.Size, 1));
+        var lus = await flux.ReadAtLeastAsync(debut, debut.Length, throwOnEndOfStream: false);
+        return debut[..lus];
+    }
+
+    private static async Task<byte[]> LireAsync(IBrowserFile fichier)
+    {
+        using var memoire = new MemoryStream();
+        await using (var flux = fichier.OpenReadStream(PhotoRecette.TailleMaxOctets))
+        {
+            await flux.CopyToAsync(memoire);
+        }
+
+        return memoire.ToArray();
+    }
+
+    private void RetirerPhoto()
+    {
+        _nouvellePhoto = null;
+        _apercuNouvellePhoto = null;
+        _photoRetiree = true;
+        _erreurPhoto = null;
+    }
+
     private async Task EnregistrerAsync()
     {
         _erreurs = [];
@@ -367,7 +507,8 @@ else
             _source,
             lignes,
             ValidationRecette.NormaliserEtapes(_etapes.Select(e => e.Texte)),
-            _etiquettes);
+            _etiquettes,
+            PhotoConservee);
 
         _erreurs.AddRange(ValidationRecette.Valider(recette));
         if (_erreurs.Count > 0)
@@ -377,25 +518,63 @@ else
         }
 
         _enCours = true;
+        string? photoEcrite = null;
         try
         {
+            // Le fichier est écrit avant la base : si la base échoue, on le supprime ; l'inverse laisserait
+            // une recette pointant vers une photo absente.
+            if (_nouvellePhoto is not null)
+            {
+                photoEcrite = await StockagePhotos.EnregistrerAsync(_nouvellePhoto);
+                recette = recette with { PhotoChemin = photoEcrite };
+            }
+
             if (EstNouvelle)
             {
                 var auteur = (await EtatAuthentification).User.ObtenirIdUtilisateur()
                     ?? throw new InvalidOperationException("Aucun utilisateur connecté.");
                 await DepotRecettes.AjouterAsync(recette, auteur);
             }
-            else if (!await DepotRecettes.ModifierAsync(recette))
+            else
             {
-                _introuvable = true;
-                return;
+                var modification = await DepotRecettes.ModifierAsync(recette);
+                if (modification is null)
+                {
+                    SupprimerPhoto(photoEcrite);
+                    _introuvable = true;
+                    return;
+                }
+
+                // L'ancienne photo n'est supprimée qu'une fois la recette enregistrée sans elle.
+                if (modification.AnciennePhotoChemin != recette.PhotoChemin)
+                {
+                    SupprimerPhoto(modification.AnciennePhotoChemin);
+                }
             }
 
             Navigation.NavigateTo("recettes");
         }
+        catch (PhotoInvalideException ex)
+        {
+            _erreurs.Add(ex.Message);
+            _focusErreurs = true;
+        }
+        catch
+        {
+            SupprimerPhoto(photoEcrite);
+            throw;
+        }
         finally
         {
             _enCours = false;
+        }
+    }
+
+    private void SupprimerPhoto(string? nom)
+    {
+        if (!StockagePhotos.Supprimer(nom))
+        {
+            Journal.LogWarning("La photo {Photo} n'a pas pu être supprimée du dossier {Dossier}.", nom, StockagePhotos.Dossier);
         }
     }
 

@@ -25,7 +25,15 @@ else
     <ul class="liste-cartes">
         @foreach (var recette in _recettes)
         {
-            <li @key="recette.Id">
+            <li @key="recette.Id" class="ligne-recette">
+                @if (recette.PhotoChemin is not null)
+                {
+                    <img class="vignette-recette" src="photos/@recette.PhotoChemin" alt="" loading="lazy" />
+                }
+                else
+                {
+                    <span class="vignette-recette vignette-vide" aria-hidden="true"></span>
+                }
                 <div class="infos-ligne">
                     <a class="nom-ligne" href="recettes/@recette.Id/modifier">@recette.Nom</a>
                     <span class="details-ligne">

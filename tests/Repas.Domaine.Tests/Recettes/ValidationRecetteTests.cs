@@ -25,6 +25,20 @@ public sealed class ValidationRecetteTests
     }
 
     [Fact]
+    public void PhotoAuNomGenere_EstAcceptee()
+    {
+        Assert.Empty(ValidationRecette.Valider(Recette() with { PhotoChemin = PhotoRecette.NouveauNom(FormatPhoto.Jpeg) }));
+    }
+
+    [Fact]
+    public void PhotoAuNomInvalide_EstRefusee()
+    {
+        Assert.Contains(
+            "Le fichier de la photo n'est pas valide.",
+            ValidationRecette.Valider(Recette() with { PhotoChemin = "../secret.jpg" }));
+    }
+
+    [Fact]
     public void RecetteSansIngredientNiEtape_EstAcceptee()
     {
         // Une recette peut être saisie en plusieurs fois.

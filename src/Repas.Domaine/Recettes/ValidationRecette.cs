@@ -108,6 +108,12 @@ public static class ValidationRecette
             erreurs.Add($"Une étiquette ne doit pas dépasser {LongueurMaxEtiquette} caractères.");
         }
 
+        // Le nom est toujours généré par l'app ; un autre nom indique une erreur de programmation.
+        if (recette.PhotoChemin is not null && !PhotoRecette.EstNomValide(recette.PhotoChemin))
+        {
+            erreurs.Add("Le fichier de la photo n'est pas valide.");
+        }
+
         return erreurs;
     }
 }

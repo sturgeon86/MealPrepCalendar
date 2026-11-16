@@ -5,9 +5,11 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
+using Repas.Domaine.Recettes;
 using Repas.Domaine.Utilisateurs;
 using Repas.Donnees;
 using Repas.Donnees.Migrations;
+using Repas.Donnees.Photos;
 using Repas.Web.Authentification;
 using Repas.Web.Components;
 
@@ -29,6 +31,14 @@ builder.Services.AddSingleton<DepotCategories>();
 builder.Services.AddSingleton<DepotUnites>();
 builder.Services.AddSingleton<DepotIngredients>();
 builder.Services.AddSingleton<DepotRecettes>();
+
+// Photos des recettes : volume /data/photos dans l'image Docker, sinon un dossier local ignoré par git.
+var dossierPhotos = builder.Configuration["Photos:Chemin"];
+if (string.IsNullOrWhiteSpace(dossierPhotos))
+{
+    dossierPhotos = Path.Combine(builder.Environment.ContentRootPath, "App_Data", "photos");
+}
+builder.Services.AddSingleton(new StockagePhotos(dossierPhotos));
 builder.Services.AddSingleton<IHacheurMotDePasse, HacheurMotDePasse>();
 builder.Services.AddSingleton<ServiceConnexion>();
 builder.Services.AddSingleton<ServicePremierCompte>();
@@ -151,7 +161,22 @@ app.MapStaticAssets().AllowAnonymous();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
-app.MapPost("/deconnexion", async (HttpContext contexte, IAntiforgery antiforgery) =>
+// Photos des recettes. Comme tout le reste, elles exigent une connexion (politique par défaut).
+// Un nom de fichier n'est jamais réutilisé : le navigateur peut garder la photo en cache sans limite.
+app.MapGet("/photos/{nom}", (string nom, StockagePhotos stockage, HttpContext contexte) =>
+{
+    var chemin = stockage.TrouverChemin(nom);
+    if (chemin is null)
+    {
+        return Results.NotFound();
+    }
+
+    contexte.Response.Headers.CacheControl = "private, max-age=31536000, immutable";
+    contexte.Response.Headers.XContentTypeOptions = "nosniff";
+    return Results.File(chemin, PhotoRecette.TypeContenu(nom));
+});
+
+app.MapPost("/deconnexion",async (HttpContext contexte, IAntiforgery antiforgery) =>
 {
     try
     {

@@ -24,6 +24,7 @@ public sealed record LigneIngredient(
 /// <param name="Id">0 pour une recette pas encore enregistrée.</param>
 /// <param name="Portions">Nombre de portions que donnent les quantités.</param>
 /// <param name="Etiquettes">Noms des étiquettes (« Végétarien », « Souper rapide »…).</param>
+/// <param name="PhotoChemin">Nom du fichier dans le dossier des photos (voir <see cref="PhotoRecette"/>) ; <c>null</c> sans photo.</param>
 public sealed record FicheRecette(
     int Id,
     string Nom,
@@ -34,9 +35,15 @@ public sealed record FicheRecette(
     SourceRecette Source,
     IReadOnlyList<LigneIngredient> Ingredients,
     IReadOnlyList<string> Etapes,
-    IReadOnlyList<string> Etiquettes);
+    IReadOnlyList<string> Etiquettes,
+    string? PhotoChemin = null);
 
 /// <summary>Ligne de la liste des recettes.</summary>
 /// <param name="TempsTotalMin">Préparation et cuisson ; <c>null</c> si aucun des deux n'est connu.</param>
 /// <param name="Etiquettes">Étiquettes séparées par des virgules ; vide s'il n'y en a pas.</param>
-public sealed record ResumeRecette(int Id, string Nom, int Portions, int? TempsTotalMin, string Etiquettes);
+/// <param name="PhotoChemin">Nom du fichier de la photo ; <c>null</c> sans photo.</param>
+public sealed record ResumeRecette(int Id, string Nom, int Portions, int? TempsTotalMin, string Etiquettes, string? PhotoChemin = null);
+
+/// <summary>Résultat d'une modification de recette.</summary>
+/// <param name="AnciennePhotoChemin">La photo enregistrée juste avant la modification, pour supprimer son fichier si elle a changé.</param>
+public sealed record ModificationRecette(string? AnciennePhotoChemin);

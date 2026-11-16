@@ -483,3 +483,6 @@ $RECYCLE.BIN/
 
 # Configuration locale (contient la chaîne de connexion)
 appsettings.Development.json
+
+# Photos de recettes televersees en developpement local
+App_Data/

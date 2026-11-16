@@ -91,7 +91,7 @@ public sealed class DepotRecettesTests : IAsyncLifetime
             Etiquettes = ["Déjeuner"],
         };
 
-        Assert.True(await _depot.ModifierAsync(modifiee));
+        Assert.NotNull(await _depot.ModifierAsync(modifiee));
 
         var relue = SansNoms((await _depot.TrouverAsync(id))!);
         Assert.Equal("Crêpes minces", relue.Nom);
@@ -116,9 +116,45 @@ public sealed class DepotRecettesTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Modifier_RecetteInexistante_RetourneFalse()
+    public async Task Modifier_RecetteInexistante_RetourneNull()
     {
-        Assert.False(await _depot.ModifierAsync(Crepes() with { Id = 99999 }));
+        Assert.Null(await _depot.ModifierAsync(Crepes() with { Id = 99999 }));
+    }
+
+    private const string PhotoA = "0123456789abcdef0123456789abcdef.jpg";
+    private const string PhotoB = "fedcba9876543210fedcba9876543210.png";
+
+    [Fact]
+    public async Task LaPhotoEstEnregistreeEtRelueAvecLaRecette()
+    {
+        var id = await _depot.AjouterAsync(Crepes() with { PhotoChemin = PhotoA }, _idMarie);
+
+        Assert.Equal(PhotoA, (await _depot.TrouverAsync(id))!.PhotoChemin);
+        Assert.Equal(PhotoA, (await _depot.ListerAsync()).Single().PhotoChemin);
+    }
+
+    [Fact]
+    public async Task Modifier_RetourneLaPhotoRemplacee()
+    {
+        var id = await _depot.AjouterAsync(Crepes() with { PhotoChemin = PhotoA }, _idMarie);
+
+        var changement = await _depot.ModifierAsync(Crepes() with { Id = id, PhotoChemin = PhotoB });
+        var retrait = await _depot.ModifierAsync(Crepes() with { Id = id, PhotoChemin = null });
+
+        Assert.Equal(PhotoA, changement!.AnciennePhotoChemin);
+        Assert.Equal(PhotoB, retrait!.AnciennePhotoChemin);
+        Assert.Null((await _depot.TrouverAsync(id))!.PhotoChemin);
+    }
+
+    [Fact]
+    public async Task Modifier_SansPhotoAuparavant_RetourneUneAnciennePhotoNulle()
+    {
+        var id = await _depot.AjouterAsync(Crepes(), _idMarie);
+
+        var modification = await _depot.ModifierAsync(Crepes() with { Id = id, PhotoChemin = PhotoA });
+
+        Assert.NotNull(modification);
+        Assert.Null(modification.AnciennePhotoChemin);
     }
 
     [Fact]
