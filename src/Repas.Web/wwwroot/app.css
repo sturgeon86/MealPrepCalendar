@@ -1107,3 +1107,99 @@ a.bouton-secondaire {
     flex-wrap: nowrap;
     margin-bottom: 0;
 }
+
+/* --- Calendrier sur cellulaire et petite tablette : les jours s'empilent --- */
+@media (max-width: 56rem) {
+    .grille-semaine {
+        grid-template-columns: 1fr;
+        grid-template-rows: none;
+        gap: 0.5rem;
+    }
+
+    /* Chaque jour redevient une carte autonome : titre sur toute la largeur, dîner et souper côte à côte. */
+    .grille-semaine .jour {
+        grid-row: auto;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: auto;
+    }
+
+    .grille-semaine .titre-jour {
+        grid-column: 1 / -1;
+    }
+
+    .grille-semaine .plage {
+        border-top: 0;
+    }
+
+    .grille-semaine .plage + .plage {
+        border-left: 1px solid #e4e7eb;
+    }
+
+    /* Cibles tactiles plus grandes. */
+    .bouton-ajout-repas,
+    .bouton-modifier-repas {
+        min-width: 2.5rem;
+        min-height: 2.5rem;
+        border-color: #cbd2d9;
+    }
+
+    .repas-plage li {
+        align-items: center;
+    }
+}
+
+/* Très étroit : dîner et souper l'un sous l'autre dans la carte du jour. */
+@media (max-width: 22rem) {
+    .grille-semaine .jour {
+        grid-template-columns: 1fr;
+    }
+
+    .grille-semaine .plage + .plage {
+        border-top: 1px solid #e4e7eb;
+        border-left: 0;
+    }
+}
+
+@media (max-width: 30rem) {
+    /* Les flèches suffisent ; le titre de la semaine garde la place. */
+    .texte-navigation {
+        display: none;
+    }
+
+    .navigation-semaine .bouton-secondaire {
+        min-width: 2.75rem;
+        text-align: center;
+    }
+
+    .titre-semaine h2 {
+        font-size: 1rem;
+    }
+
+    /* Le panneau s'ouvre en bas de l'écran, à portée du pouce. */
+    .panneau {
+        top: auto;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        max-height: 90vh;
+        border-radius: 0.75rem 0.75rem 0 0;
+        transform: none;
+    }
+
+    .actions-panneau .bouton-principal {
+        flex: 1;
+    }
+}
+
+/* Le nombre de portions (ou la catégorie) d'une suggestion ne se coupe pas : c'est le nom qui passe à la ligne. */
+.suggestions button .details-ligne {
+    flex: none;
+    white-space: nowrap;
+}
+
+/* Tablette : deux jours par rangée. */
+@media (min-width: 36rem) and (max-width: 56rem) {
+    .grille-semaine {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}

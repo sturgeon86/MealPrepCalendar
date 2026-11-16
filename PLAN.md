@@ -65,7 +65,7 @@ L'app tourne sur Unraid en réseau local seulement (`http://192.168.1.10:8096`, 
 - [x] **4.2 Vue semaine** : 7 jours × Dîner / Souper, navigation semaine précédente / suivante.
 - [x] **4.3 Planifier un repas** : choisir une recette (recherche) et un nombre de portions, ou saisir un repas libre (restaurant, restes…).
   - *Critères :* RecetteId ou TexteLibre obligatoire ; déplacement et suppression possibles.
-- [ ] **4.4 Affichage cellulaire** : la vue semaine reste utilisable sur petit écran (jours empilés).
+- [x] **4.4 Affichage cellulaire** : la vue semaine reste utilisable sur petit écran (jours empilés).
 
 ## Itération 5 — Liste d'épicerie
 - [ ] **5.1 Tables** `ListeEpicerie`, `ListeEpicerieArticle`, `ListeEpicerieArticleSource` (contrainte : une seule liste active).
