@@ -1,0 +1,48 @@
+@page "/recettes"
+@using Repas.Domaine.Recettes
+@using Repas.Donnees
+@inject DepotRecettes DepotRecettes
+
+<PageTitle>Recettes</PageTitle>
+
+<div class="entete-page">
+    <h1>Recettes</h1>
+    <div class="actions-page">
+        <a class="bouton-principal bouton-compact" href="recettes/nouvelle">Ajouter</a>
+    </div>
+</div>
+
+@if (_recettes is null)
+{
+    <p>Chargement…</p>
+}
+else if (_recettes.Count == 0)
+{
+    <p class="aide">Le livre de recettes est vide. Ajoutez une première recette.</p>
+}
+else
+{
+    <ul class="liste-cartes">
+        @foreach (var recette in _recettes)
+        {
+            <li @key="recette.Id">
+                <div class="infos-ligne">
+                    <a class="nom-ligne" href="recettes/@recette.Id/modifier">@recette.Nom</a>
+                    <span class="details-ligne">
+                        @recette.Portions portion(s)@(recette.TempsTotalMin is { } temps ? $" · {temps} min" : "")
+                    </span>
+                    @if (recette.Etiquettes.Length > 0)
+                    {
+                        <span class="details-ligne">@recette.Etiquettes</span>
+                    }
+                </div>
+            </li>
+        }
+    </ul>
+}
+
+@code {
+    private List<ResumeRecette>? _recettes;
+
+    protected override async Task OnInitializedAsync() => _recettes = await DepotRecettes.ListerAsync();
+}

@@ -1,0 +1,107 @@
+@* Crée un ingrédient sans quitter la page en cours : nom, catégorie et type de mesure suffisent.
+   Le reste de la fiche (densité, poids moyen, synonymes) pourra être complété plus tard. *@
+@using Repas.Domaine.Mesures
+@using Repas.Domaine.Referentiel
+@using Repas.Donnees
+@inject DepotIngredients DepotIngredients
+
+<div class="creation-rapide" role="group" aria-labelledby="titre-creation-rapide">
+    <p id="titre-creation-rapide" class="titre-creation">Nouvel ingrédient</p>
+
+    @if (_erreurs.Count > 0)
+    {
+        <div class="message-erreur" role="alert">
+            @foreach (var erreur in _erreurs)
+            {
+                <div>@erreur</div>
+            }
+        </div>
+    }
+
+    <div class="grille-3">
+        <div class="champ">
+            <label for="creation-nom">Nom</label>
+            <input id="creation-nom" @bind="_nom" maxlength="@ValidationIngredient.LongueurMaxNom" autocomplete="off" />
+        </div>
+        <div class="champ">
+            <label for="creation-categorie">Catégorie d'épicerie</label>
+            <select id="creation-categorie" @bind="_categorieId">
+                <option value="0" disabled>Choisir…</option>
+                @foreach (var categorie in Categories)
+                {
+                    <option value="@categorie.Id">@categorie.Nom</option>
+                }
+            </select>
+        </div>
+        <div class="champ">
+            <label for="creation-type">Acheté au</label>
+            <select id="creation-type" @bind="_typeMesure">
+                <option value="@TypeMesure.Poids">poids (g)</option>
+                <option value="@TypeMesure.Volume">volume (ml)</option>
+                <option value="@TypeMesure.Unite">à la pièce</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="actions-page">
+        <button type="button" class="bouton-principal bouton-compact" disabled="@_enCours" @onclick="CreerAsync">Créer et ajouter</button>
+        <button type="button" class="bouton-secondaire" @onclick="() => AuAnnuler.InvokeAsync()">Annuler</button>
+    </div>
+</div>
+
+@code {
+    private string _nom = string.Empty;
+    private int _categorieId;
+    private TypeMesure _typeMesure = TypeMesure.Poids;
+    private List<string> _erreurs = [];
+    private bool _enCours;
+
+    [Parameter, EditorRequired]
+    public string NomInitial { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<Categorie> Categories { get; set; } = [];
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<Unite> Unites { get; set; } = [];
+
+    /// <summary>Reçoit l'ingrédient créé.</summary>
+    [Parameter]
+    public EventCallback<IngredientCree> AuCreation { get; set; }
+
+    [Parameter]
+    public EventCallback AuAnnuler { get; set; }
+
+    protected override void OnInitialized() => _nom = NomInitial;
+
+    private async Task CreerAsync()
+    {
+        // L'unité des totaux est l'unité de base du type choisi (g, ml ou unité).
+        var unite = Unites.FirstOrDefault(u => u.TypeMesure == _typeMesure && u.FacteurVersReference == 1);
+        var fiche = new FicheIngredient(
+            0, _nom.Trim(), _categorieId, _typeMesure, unite?.Id ?? 0, null, null, EstAlimentaire: true, Actif: true, []);
+
+        _erreurs = ValidationIngredient.Valider(fiche, Unites.ToList()).ToList();
+        if (_erreurs.Count > 0)
+        {
+            return;
+        }
+
+        _enCours = true;
+        try
+        {
+            var id = await DepotIngredients.AjouterAsync(fiche);
+            await AuCreation.InvokeAsync(new IngredientCree(id, fiche.Nom, fiche.UniteReferenceId));
+        }
+        catch (TexteIngredientDejaUtiliseException ex)
+        {
+            _erreurs = [ex.Message];
+        }
+        finally
+        {
+            _enCours = false;
+        }
+    }
+
+    public sealed record IngredientCree(int Id, string Nom, int UniteReferenceId);
+}

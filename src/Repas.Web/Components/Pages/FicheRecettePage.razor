@@ -1,0 +1,435 @@
+@page "/recettes/nouvelle"
+@page "/recettes/{Id:int}/modifier"
+@using Repas.Domaine.Mesures
+@using Repas.Domaine.Recettes
+@using Repas.Domaine.Referentiel
+@using Repas.Donnees
+@using Repas.Web.Authentification
+@using Repas.Web.Components.Recettes
+@inject DepotRecettes DepotRecettes
+@inject DepotCategories DepotCategories
+@inject DepotUnites DepotUnites
+@inject NavigationManager Navigation
+
+<PageTitle>@(EstNouvelle ? "Nouvelle recette" : _nom.Length > 0 ? _nom : "Recette")</PageTitle>
+
+<p><a href="recettes">← Recettes</a></p>
+
+@if (_introuvable)
+{
+    <h1>Recette introuvable</h1>
+    <p>Cette recette n'existe pas ou plus.</p>
+}
+else if (!_charge)
+{
+    <p>Chargement…</p>
+}
+else
+{
+    <h1>@(EstNouvelle ? "Nouvelle recette" : "Modifier la recette")</h1>
+
+    @if (_erreurs.Count > 0)
+    {
+        <div class="message-erreur" role="alert" tabindex="-1" @ref="_zoneErreurs">
+            <ul>
+                @foreach (var erreur in _erreurs)
+                {
+                    <li>@erreur</li>
+                }
+            </ul>
+        </div>
+    }
+
+    <section class="carte-formulaire carte-large">
+        <div class="champ">
+            <label for="nom">Nom</label>
+            <input id="nom" @bind="_nom" maxlength="@ValidationRecette.LongueurMaxNom" autocomplete="off" />
+        </div>
+
+        <div class="grille-3">
+            <div class="champ">
+                <label for="portions">Portions</label>
+                <input id="portions" type="number" min="1" max="@ValidationRecette.PortionsMax" @bind="_portions" />
+            </div>
+            <div class="champ">
+                <label for="preparation">Préparation (min)</label>
+                <input id="preparation" type="number" min="0" @bind="_tempsPreparation" />
+            </div>
+            <div class="champ">
+                <label for="cuisson">Cuisson (min)</label>
+                <input id="cuisson" type="number" min="0" @bind="_tempsCuisson" />
+            </div>
+        </div>
+    </section>
+
+    <section class="carte-formulaire carte-large">
+        <h2>Ingrédients</h2>
+        <p class="aide">Quantités comme dans la recette : 2, 2,5, 1/2, 1 1/2 ou ½. Laissez la quantité vide pour « au goût ».</p>
+
+        @if (_lignes.Count > 0)
+        {
+            <ol class="lignes-recette">
+                @for (var i = 0; i < _lignes.Count; i++)
+                {
+                    var ligne = _lignes[i];
+                    var position = i;
+                    <li @key="ligne.Cle" class="ligne-ingredient">
+                        <span class="nom-ligne zone-nom">@ligne.NomIngredient</span>
+                        <div class="zone-quantite">
+                            <label class="visuellement-cache" for="quantite-@ligne.Cle">Quantité de @ligne.NomIngredient</label>
+                            <input id="quantite-@ligne.Cle" placeholder="Qté" @bind="ligne.QuantiteTexte" autocomplete="off" inputmode="decimal" />
+                        </div>
+                        <div class="zone-unite">
+                            <label class="visuellement-cache" for="unite-@ligne.Cle">Unité de @ligne.NomIngredient</label>
+                            <select id="unite-@ligne.Cle" @bind="ligne.UniteId">
+                                <option value="">—</option>
+                                @foreach (var groupe in _unites.GroupBy(u => u.TypeMesure))
+                                {
+                                    <optgroup label="@LibelleType(groupe.Key)">
+                                        @foreach (var unite in groupe)
+                                        {
+                                            <option value="@unite.Id">@unite.Code</option>
+                                        }
+                                    </optgroup>
+                                }
+                            </select>
+                        </div>
+                        <div class="zone-precision">
+                            <label class="visuellement-cache" for="precision-@ligne.Cle">Précision pour @ligne.NomIngredient</label>
+                            <input id="precision-@ligne.Cle" placeholder="Précision (ex. : haché)" @bind="ligne.Precision"
+                                   maxlength="@ValidationRecette.LongueurMaxPrecision" autocomplete="off" />
+                        </div>
+                        <div class="zone-optionnel champ-case">
+                            <input id="optionnel-@ligne.Cle" type="checkbox" @bind="ligne.EstOptionnel" />
+                            <label for="optionnel-@ligne.Cle">Facultatif</label>
+                        </div>
+                        <span class="zone-actions actions-ligne">
+                            <button type="button" class="bouton-icone" aria-label="Monter @ligne.NomIngredient" title="Monter"
+                                    disabled="@(position == 0)" @onclick="() => Deplacer(_lignes, position, -1)">↑</button>
+                            <button type="button" class="bouton-icone" aria-label="Descendre @ligne.NomIngredient" title="Descendre"
+                                    disabled="@(position == _lignes.Count - 1)" @onclick="() => Deplacer(_lignes, position, 1)">↓</button>
+                            <button type="button" class="bouton-icone" aria-label="Retirer @ligne.NomIngredient" title="Retirer"
+                                    @onclick="() => _lignes.RemoveAt(position)">✕</button>
+                        </span>
+                    </li>
+                }
+            </ol>
+        }
+
+        @if (_nomACreer is null)
+        {
+            <RechercheIngredient IdChamp="ajout-ingredient" AuChoix="AjouterIngredient" AuCreer="CommencerCreation" />
+        }
+        else
+        {
+            <CreationRapideIngredient NomInitial="@_nomACreer" Categories="_categories" Unites="_unites"
+                                      AuCreation="AjouterIngredientCree" AuAnnuler="() => _nomACreer = null" />
+        }
+    </section>
+
+    <section class="carte-formulaire carte-large">
+        <h2>Étapes</h2>
+        <ol class="lignes-recette">
+            @for (var i = 0; i < _etapes.Count; i++)
+            {
+                var etape = _etapes[i];
+                var position = i;
+                <li @key="etape.Cle" class="ligne-etape">
+                    <label class="visuellement-cache" for="etape-@etape.Cle">Étape @(position + 1)</label>
+                    <span class="numero-etape" aria-hidden="true">@(position + 1).</span>
+                    <textarea id="etape-@etape.Cle" rows="2" @bind="etape.Texte" maxlength="@ValidationRecette.LongueurMaxEtape"></textarea>
+                    <span class="actions-ligne">
+                        <button type="button" class="bouton-icone" aria-label="Monter l'étape @(position + 1)" title="Monter"
+                                disabled="@(position == 0)" @onclick="() => Deplacer(_etapes, position, -1)">↑</button>
+                        <button type="button" class="bouton-icone" aria-label="Descendre l'étape @(position + 1)" title="Descendre"
+                                disabled="@(position == _etapes.Count - 1)" @onclick="() => Deplacer(_etapes, position, 1)">↓</button>
+                        <button type="button" class="bouton-icone" aria-label="Retirer l'étape @(position + 1)" title="Retirer"
+                                @onclick="() => _etapes.RemoveAt(position)">✕</button>
+                    </span>
+                </li>
+            }
+        </ol>
+        <button type="button" class="bouton-secondaire" @onclick="() => _etapes.Add(new ModeleEtape())">+ Ajouter une étape</button>
+    </section>
+
+    <section class="carte-formulaire carte-large">
+        <h2>Étiquettes et notes</h2>
+
+        @if (_etiquettes.Count > 0)
+        {
+            <ul class="etiquettes" aria-label="Étiquettes de la recette">
+                @foreach (var etiquette in _etiquettes)
+                {
+                    <li @key="etiquette">
+                        @etiquette
+                        <button type="button" class="retirer-etiquette" aria-label="Retirer l'étiquette @etiquette"
+                                @onclick="() => _etiquettes.Remove(etiquette)">✕</button>
+                    </li>
+                }
+            </ul>
+        }
+
+        <div class="champ">
+            <label for="nouvelle-etiquette">Ajouter une étiquette</label>
+            <div class="ajout-etiquette">
+                <input id="nouvelle-etiquette" list="etiquettes-existantes" @bind="_nouvelleEtiquette" @bind:event="oninput"
+                       @onkeyup="AjouterEtiquetteSiEntree" maxlength="@ValidationRecette.LongueurMaxEtiquette" autocomplete="off"
+                       placeholder="Ex. : Végétarien, Souper rapide" />
+                <button type="button" class="bouton-secondaire" @onclick="AjouterEtiquette">Ajouter</button>
+            </div>
+            <datalist id="etiquettes-existantes">
+                @foreach (var existante in _etiquettesExistantes)
+                {
+                    <option value="@existante"></option>
+                }
+            </datalist>
+        </div>
+
+        <div class="champ">
+            <label for="notes">Notes</label>
+            <textarea id="notes" rows="3" @bind="_notes"></textarea>
+        </div>
+    </section>
+
+    <div class="barre-enregistrer">
+        <button type="button" class="bouton-principal" disabled="@_enCours" @onclick="EnregistrerAsync">Enregistrer la recette</button>
+    </div>
+}
+
+@code {
+    private bool _charge;
+    private bool _introuvable;
+    private bool _enCours;
+    private List<string> _erreurs = [];
+    private ElementReference _zoneErreurs;
+    private bool _focusErreurs;
+
+    private List<Categorie> _categories = [];
+    private List<Unite> _unites = [];
+    private List<string> _etiquettesExistantes = [];
+
+    private string _nom = string.Empty;
+    private int _portions = 4;
+    private int? _tempsPreparation;
+    private int? _tempsCuisson;
+    private string? _notes;
+    private SourceRecette _source = SourceRecette.Manuelle;
+    private List<ModeleLigne> _lignes = [];
+    private List<ModeleEtape> _etapes = [];
+    private List<string> _etiquettes = [];
+    private string _nouvelleEtiquette = string.Empty;
+    private string? _nomACreer;
+
+    [Parameter]
+    public int? Id { get; set; }
+
+    [CascadingParameter]
+    private Task<AuthenticationState> EtatAuthentification { get; set; } = default!;
+
+    private bool EstNouvelle => Id is null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _categories = await DepotCategories.ListerAsync();
+        _unites = await DepotUnites.ListerAsync();
+        _etiquettesExistantes = await DepotRecettes.ListerEtiquettesAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _charge = false;
+        _introuvable = false;
+        _erreurs = [];
+        _nomACreer = null;
+
+        if (EstNouvelle)
+        {
+            _nom = string.Empty;
+            _portions = 4;
+            _tempsPreparation = null;
+            _tempsCuisson = null;
+            _notes = null;
+            _source = SourceRecette.Manuelle;
+            _lignes = [];
+            _etapes = [new ModeleEtape()];
+            _etiquettes = [];
+            _charge = true;
+            return;
+        }
+
+        var recette = await DepotRecettes.TrouverAsync(Id!.Value);
+        if (recette is null)
+        {
+            _introuvable = true;
+            return;
+        }
+
+        _nom = recette.Nom;
+        _portions = recette.Portions;
+        _tempsPreparation = recette.TempsPreparationMin;
+        _tempsCuisson = recette.TempsCuissonMin;
+        _notes = recette.Notes;
+        _source = recette.Source;
+        _lignes = recette.Ingredients.Select(ModeleLigne.Depuis).ToList();
+        _etapes = recette.Etapes.Select(t => new ModeleEtape { Texte = t }).ToList();
+        _etiquettes = recette.Etiquettes.ToList();
+        _charge = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Après un enregistrement refusé, amène les erreurs à l'écran (et aux lecteurs d'écran).
+        if (_focusErreurs)
+        {
+            _focusErreurs = false;
+            await _zoneErreurs.FocusAsync();
+        }
+    }
+
+    private static string LibelleType(TypeMesure type) => type switch
+    {
+        TypeMesure.Poids => "Poids",
+        TypeMesure.Volume => "Volume",
+        _ => "À la pièce",
+    };
+
+    private void AjouterIngredient(ResumeIngredient ingredient)
+    {
+        // L'unité proposée est celle des totaux de l'ingrédient ; on peut la changer.
+        var unite = _unites.FirstOrDefault(u => u.Code == ingredient.UniteReference);
+        _lignes.Add(new ModeleLigne { IngredientId = ingredient.Id, NomIngredient = ingredient.Nom, UniteId = unite?.Id });
+    }
+
+    private void CommencerCreation(string nom) => _nomACreer = nom;
+
+    private void AjouterIngredientCree(CreationRapideIngredient.IngredientCree cree)
+    {
+        _nomACreer = null;
+        _lignes.Add(new ModeleLigne { IngredientId = cree.Id, NomIngredient = cree.Nom, UniteId = cree.UniteReferenceId });
+    }
+
+    private static void Deplacer<T>(List<T> liste, int position, int decalage)
+    {
+        var cible = position + decalage;
+        if (cible < 0 || cible >= liste.Count)
+        {
+            return;
+        }
+
+        (liste[position], liste[cible]) = (liste[cible], liste[position]);
+    }
+
+    private void AjouterEtiquetteSiEntree(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            AjouterEtiquette();
+        }
+    }
+
+    private void AjouterEtiquette()
+    {
+        _etiquettes = ValidationRecette.NormaliserEtiquettes(_etiquettes.Append(_nouvelleEtiquette)).ToList();
+        _nouvelleEtiquette = string.Empty;
+    }
+
+    private async Task EnregistrerAsync()
+    {
+        _erreurs = [];
+
+        // Une étiquette tapée mais pas encore ajoutée fait partie de la recette.
+        if (!string.IsNullOrWhiteSpace(_nouvelleEtiquette))
+        {
+            AjouterEtiquette();
+        }
+
+        var lignes = new List<LigneIngredient>();
+        foreach (var ligne in _lignes)
+        {
+            var quantiteLue = AnalyseQuantite.EssayerLire(ligne.QuantiteTexte, out var quantite);
+            if (!quantiteLue)
+            {
+                _erreurs.Add($"La quantité « {ligne.QuantiteTexte.Trim()} » de « {ligne.NomIngredient} » n'est pas reconnue.");
+            }
+
+            // Une quantité illisible est déjà signalée : on n'ajoute pas « unité sans quantité » pour la même ligne.
+            var uniteId = quantiteLue ? ligne.UniteId : null;
+            lignes.Add(new LigneIngredient(ligne.IngredientId, quantite, uniteId, ligne.Precision, ligne.EstOptionnel, ligne.NomIngredient));
+        }
+
+        var recette = new FicheRecette(
+            Id ?? 0,
+            _nom.Trim(),
+            _portions,
+            _tempsPreparation,
+            _tempsCuisson,
+            _notes,
+            _source,
+            lignes,
+            ValidationRecette.NormaliserEtapes(_etapes.Select(e => e.Texte)),
+            _etiquettes);
+
+        _erreurs.AddRange(ValidationRecette.Valider(recette));
+        if (_erreurs.Count > 0)
+        {
+            _focusErreurs = true;
+            return;
+        }
+
+        _enCours = true;
+        try
+        {
+            if (EstNouvelle)
+            {
+                var auteur = (await EtatAuthentification).User.ObtenirIdUtilisateur()
+                    ?? throw new InvalidOperationException("Aucun utilisateur connecté.");
+                await DepotRecettes.AjouterAsync(recette, auteur);
+            }
+            else if (!await DepotRecettes.ModifierAsync(recette))
+            {
+                _introuvable = true;
+                return;
+            }
+
+            Navigation.NavigateTo("recettes");
+        }
+        finally
+        {
+            _enCours = false;
+        }
+    }
+
+    private sealed class ModeleLigne
+    {
+        public Guid Cle { get; } = Guid.NewGuid();
+
+        public int IngredientId { get; init; }
+
+        public string NomIngredient { get; init; } = string.Empty;
+
+        public string QuantiteTexte { get; set; } = string.Empty;
+
+        public int? UniteId { get; set; }
+
+        public string? Precision { get; set; }
+
+        public bool EstOptionnel { get; set; }
+
+        public static ModeleLigne Depuis(LigneIngredient ligne) => new()
+        {
+            IngredientId = ligne.IngredientId,
+            NomIngredient = ligne.NomIngredient,
+            QuantiteTexte = AnalyseQuantite.Ecrire(ligne.Quantite),
+            UniteId = ligne.UniteId,
+            Precision = ligne.Precision,
+            EstOptionnel = ligne.EstOptionnel,
+        };
+    }
+
+    private sealed class ModeleEtape
+    {
+        public Guid Cle { get; } = Guid.NewGuid();
+
+        public string Texte { get; set; } = string.Empty;
+    }
+}

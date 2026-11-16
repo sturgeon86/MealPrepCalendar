@@ -28,6 +28,7 @@ builder.Services.AddSingleton<DepotUtilisateurs>();
 builder.Services.AddSingleton<DepotCategories>();
 builder.Services.AddSingleton<DepotUnites>();
 builder.Services.AddSingleton<DepotIngredients>();
+builder.Services.AddSingleton<DepotRecettes>();
 builder.Services.AddSingleton<IHacheurMotDePasse, HacheurMotDePasse>();
 builder.Services.AddSingleton<ServiceConnexion>();
 builder.Services.AddSingleton<ServicePremierCompte>();

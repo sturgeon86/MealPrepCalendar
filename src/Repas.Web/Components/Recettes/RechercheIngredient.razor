@@ -1,0 +1,107 @@
+@* Champ de recherche d'un ingrédient actif, par nom ou synonyme. Propose de créer l'ingrédient
+   quand le texte ne correspond exactement à aucun nom. *@
+@implements IDisposable
+@using Repas.Domaine.Referentiel
+@using Repas.Donnees
+@inject DepotIngredients DepotIngredients
+
+<div class="recherche-ingredient">
+    <label for="@IdChamp">@Libelle</label>
+    <input id="@IdChamp" type="search" placeholder="Nom ou synonyme" autocomplete="off"
+           value="@_texte" @oninput="SurSaisieAsync" />
+
+    @if (_texte.Trim().Length > 0)
+    {
+        <ul class="suggestions" aria-label="Ingrédients trouvés">
+            @foreach (var ingredient in _resultats)
+            {
+                <li @key="ingredient.Id">
+                    <button type="button" @onclick="() => ChoisirAsync(ingredient)">
+                        <span class="nom-ligne">@ingredient.Nom</span>
+                        <span class="details-ligne">@ingredient.Categorie</span>
+                    </button>
+                </li>
+            }
+            @if (!_correspondanceExacte && !_enRecherche)
+            {
+                <li>
+                    <button type="button" class="suggestion-creer" @onclick="CreerAsync">
+                        + Créer l'ingrédient « @_texte.Trim() »
+                    </button>
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    private const int NombreMaxResultats = 8;
+
+    private string _texte = string.Empty;
+    private List<ResumeIngredient> _resultats = [];
+    private bool _correspondanceExacte;
+    private bool _enRecherche;
+    private CancellationTokenSource? _attente;
+
+    [Parameter, EditorRequired]
+    public string IdChamp { get; set; } = default!;
+
+    [Parameter]
+    public string Libelle { get; set; } = "Ajouter un ingrédient";
+
+    [Parameter]
+    public EventCallback<ResumeIngredient> AuChoix { get; set; }
+
+    /// <summary>Reçoit le texte saisi, pour créer un nouvel ingrédient de ce nom.</summary>
+    [Parameter]
+    public EventCallback<string> AuCreer { get; set; }
+
+    private async Task SurSaisieAsync(ChangeEventArgs e)
+    {
+        _texte = e.Value?.ToString() ?? string.Empty;
+        _attente?.Cancel();
+        _attente?.Dispose();
+        _attente = new CancellationTokenSource();
+        var jeton = _attente.Token;
+        _enRecherche = true;
+        try
+        {
+            await Task.Delay(250, jeton);
+            var cherche = _texte.Trim();
+            var resultats = cherche.Length == 0 ? [] : await DepotIngredients.RechercherAsync(cherche, annulation: jeton);
+            _resultats = resultats.Take(NombreMaxResultats).ToList();
+            _correspondanceExacte = resultats.Any(r => ValidationIngredient.ComparateurNoms.Equals(r.Nom, cherche));
+            _enRecherche = false;
+        }
+        catch (OperationCanceledException)
+        {
+            // Une autre frappe a suivi : c'est elle qui lancera la recherche.
+        }
+    }
+
+    private async Task ChoisirAsync(ResumeIngredient ingredient)
+    {
+        Vider();
+        await AuChoix.InvokeAsync(ingredient);
+    }
+
+    private async Task CreerAsync()
+    {
+        var nom = _texte.Trim();
+        Vider();
+        await AuCreer.InvokeAsync(nom);
+    }
+
+    private void Vider()
+    {
+        _texte = string.Empty;
+        _resultats = [];
+        _correspondanceExacte = false;
+    }
+
+    public void Dispose()
+    {
+        _attente?.Cancel();
+        _attente?.Dispose();
+    }
+}
