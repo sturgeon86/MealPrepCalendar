@@ -102,7 +102,7 @@ référentiel, écran de validation), puis les sources, de la plus simple à la 
 ## Itération 8 — Import de recettes
 - [x] **8.1 Lire une ligne d'ingrédient** (domaine) : « 1 ½ tasse de farine tout usage, tamisée » → quantité, unité, nom, précision.
   - *Critères :* tests sur des lignes réelles : fractions, unités au pluriel et abrégées (« tasses », « c. à s. », « c. à thé », « ml », « lb »), unités anglaises courantes (« cup », « tbsp »), « au goût », « 2 oignons », « 1 boîte (540 ml) de pois chiches ».
-- [ ] **8.2 Rapprocher un nom du référentiel** (domaine) : par nom et synonyme, sans égard à la casse, aux accents ni au pluriel (« oignons jaunes » → *Oignon jaune*) ; sinon des suggestions proches, ou « à créer ».
+- [x] **8.2 Rapprocher un nom du référentiel** (domaine) : par nom et synonyme, sans égard à la casse, aux accents ni au pluriel (« oignons jaunes » → *Oignon jaune*) ; sinon des suggestions proches, ou « à créer ».
   - *Critères :* tests de rapprochement exact, approché et sans correspondance ; aucun choix silencieux quand deux ingrédients conviennent.
 - [ ] **8.3 Écran de validation d'un brouillon** : nom, portions, temps, étapes et ingrédients pré-remplis ; pour chaque ingrédient, le rapprochement proposé à confirmer, à changer ou à créer (création rapide) ; puis enregistrement comme une recette normale. Première source : **coller le texte** d'une recette (une ligne par ingrédient).
   - *Critères :* rien n'est enregistré avant la validation ; une ligne non rapprochée bloque l'enregistrement avec un message clair ; la recette garde sa source.
